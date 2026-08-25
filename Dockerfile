@@ -7,7 +7,8 @@ COPY go.mod go.sum* ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o bayeos-api .
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.Version=${VERSION}" -o bayeos-api .
 
 # Run stage
 FROM alpine:latest
@@ -19,7 +20,5 @@ WORKDIR /app
 COPY --from=builder /app/bayeos-api .
 
 EXPOSE 5532
-
-ENV PORT=5532
 
 ENTRYPOINT ["./bayeos-api"]
