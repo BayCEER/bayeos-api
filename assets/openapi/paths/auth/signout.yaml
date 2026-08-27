@@ -1,0 +1,29 @@
+post:
+  tags:
+    - "Authentication"
+  description: "signout user"
+  summary: Sign out
+  security:
+    - JWTAuth: []
+  parameters: []
+  requestBody:
+    content:
+      application/json:
+        schema:
+          required:
+            - "name"
+            - "password"
+          type: "object"
+          properties:
+            name:
+              type: string
+              example: "root"
+            password:
+              type: string
+              example: "bayeos"
+              minLength: 6
+  responses:
+    "200":
+      description: user signed out
+    default:
+      $ref: ../../components/GenericError.yaml#/GenericError

@@ -1,0 +1,6 @@
+GenericError:
+  description: Ein Systemfehler ist aufgetreten.
+  content:
+    application/json:
+      schema:
+        $ref: ../schema/ErrorResponse.yaml

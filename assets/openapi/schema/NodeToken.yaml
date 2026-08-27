@@ -1,0 +1,19 @@
+type: object
+required:
+  - node_id
+  - token
+properties:
+  id:
+    readOnly: true  
+    type: integer
+    format: int32      
+  node_id:
+    type: integer
+    format: int32  
+  token:
+    type: string
+    format: uuid
+example:
+  id: 10
+  node_id: 1
+  token: "79a7632b-ef7c-410a-953f-dda8f80b6979"

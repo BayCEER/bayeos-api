@@ -1,0 +1,41 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+    description: node id
+security:
+  - JWTAuth: []
+get:
+  tags:
+    - Nodes
+  summary: Get all privileges of a node
+  responses:
+    "200":
+      description: Array of node privileges
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: ../schema/NodePrivilege.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+post:
+  summary: Create a new node privilege
+  tags:
+    - Nodes
+  security:
+    - JWTAuth: []
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/NodePrivilege.yaml
+  responses:
+    "201":
+      description: created
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

@@ -1,0 +1,56 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+    description: node id
+  - name: pid
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+    description: privilege id
+
+get:
+  summary: Get a node privilege
+  tags:
+    - Nodes
+
+  responses:
+    "200":
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/NodePrivilege.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+patch:
+  summary: Update a node privilege permission
+  description: all other body fields are ignored
+  tags:
+    - Nodes
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/NodePrivilege.yaml
+  responses:
+    "200":
+      description: updated
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+delete:
+  summary: Delete a node privilege
+  tags:
+    - Nodes
+  responses:
+    "200":
+      description: deleted
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

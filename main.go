@@ -4,14 +4,19 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"net/url"
-	"path/filepath"
-
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/BayCEER/bayeos/bayeos-api/handler"
 	log "github.com/BayCEER/bayeos/bayeos-api/logger"
+	"github.com/BayCEER/bayeos/bayeos-api/repository"
+	"github.com/BayCEER/bayeos/bayeos-api/service"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
@@ -24,7 +29,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-var Version = "dev"
+var Version = "DEVELOPMENT"
 
 func main() {
 
@@ -49,6 +54,43 @@ func main() {
 		}
 	}()
 
+	// Start Gin server
+	gin.SetMode(mustGetEnv("WS_GIN_MODE"))
+	r := gin.New()
+
+	// Set trusted proxies if WS_TRUSTED_PROXIES is set. This is required for correct client IP detection when running behind a reverse proxy.
+	trustedProxies, exists := os.LookupEnv("WS_TRUSTED_PROXIES")
+	if exists && trustedProxies != "" {
+		proxies := []string{}
+		for _, proxy := range filepath.SplitList(trustedProxies) {
+			proxies = append(proxies, proxy)
+		}
+		if err := r.SetTrustedProxies(proxies); err != nil {
+			log.Fatalf("failed to set trusted proxies: %v", err)
+		}
+	}
+	cheader, exists := os.LookupEnv("WS_CORS_HEADER")
+	if exists && strings.EqualFold(cheader, "true") {
+		log.Info("adding CORS header information")
+		corsConfig := cors.DefaultConfig()
+		corsConfig.AddAllowMethods("OPTIONS")
+		corsConfig.AllowAllOrigins = true
+		corsConfig.AllowCredentials = true
+		corsConfig.AllowHeaders = []string{"Origin", "Authorization", "Content-Type", "Accept"}
+		r.Use(cors.New(corsConfig))
+	}
+
+	// OpenTelemetry middleware must be registered before the error-response middleware (registered in NewMainHandler), so that the traceId is available in the error response.
+	r.Use(otelgin.Middleware(serviceName))
+
+	r.GET("/api", func(c *gin.Context) {
+		c.Data(http.StatusOK, "text/html; charset=utf-8", fmt.Appendf(nil, `<!DOCTYPE html>
+	<html lang="en"><head><meta charset="utf-8"><title>BayEOS API</title></head><body><h1>BayEOS API %s</h1>
+	<a href="/api/assets/openapi/rapidoc.html">OpenAPI Documentation</a>
+	</body>
+	</html>`, Version))
+	})
+
 	// Open PG connection
 	pgURL := mustGetEnv("PG_DB_URL")
 	pg, err := sqlx.Open("pgx", pgURL)
@@ -60,6 +102,7 @@ func main() {
 	}
 	log.Infof("pg connected")
 
+	sqlRepo := repository.NewRepository(pg)
 	if err := migratePg(pg.DB, mustGetEnv("MIGRATIONS_PATH")+"/pg"); err != nil {
 		log.Fatalf("pg database migration failed with:%v", err)
 	}
@@ -79,21 +122,57 @@ func main() {
 
 	defer qdb.Close(context.Background())
 
-	gin.SetMode(mustGetEnv("WS_GIN_MODE"))
-	r := gin.New()
-	r.Use(otelgin.Middleware(serviceName))
+	// qdbRepo := repository.NewQuestRepository(qdb)
 
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	ldapRepo := repository.NewDisabledLdapRepo()
+
+	if ldapEnabled, exists := os.LookupEnv("WS_LDAP_ENABLED"); exists && strings.EqualFold(ldapEnabled, "true") {
+		ldapConfig := repository.LdapConfig{
+			Enabled:         true,
+			URL:             mustGetEnv("WS_LDAP_URL"),
+			Base:            mustGetEnv("WS_LDAP_BASE"),
+			SignInAttr:      mustGetEnv("WS_LDAP_SIGNIN_ATTRIBUTE"),
+			DisplayNameAttr: mustGetEnv("WS_LDAP_DISPLAY_ATTRIBUTE"),
+			EmailAttr:       mustGetEnv("WS_LDAP_EMAIL_ATTRIBUTE"),
+		}
+		ldapRepo = repository.NewLdapRepoFromConfig(ldapConfig)
+		log.Infof("LDAP enabled")
+	}
+
+	log.Debugf("creating services")
+
+	userService := service.NewUserService(sqlRepo, ldapRepo)
+	nodeService := service.NewNodeService(sqlRepo)
+	nodePrivService := service.NewNodePrivService(sqlRepo)
+	nodeTokenService := service.NewNodeTokenService(sqlRepo)
+	// seriesService := service.NewSeriesService(ctx, sqlRepo, qdbRepo)
+
+	idTokenService := service.NewTokenService(&service.TSConfig{
+		APIKey:            mustGetEnv("WS_API_KEY"),
+		ExpirationMinutes: uint(mustGetEnvInt("WS_ID_TOKEN_EXPIRES_DAYS") * 24 * 60),
 	})
 
-	r.GET("/", func(c *gin.Context) {
-		msg, _ := fmt.Printf("BayEOS API %v", Version)
-		c.JSON(http.StatusOK, gin.H{"message": msg})
+	// Adding routes
+	handler.NewMainHandler(&handler.Config{
+		AssetsPath:       mustGetEnv("WS_ASSETS_PATH"),
+		Router:           r,
+		UserService:      userService,
+		NodeService:      nodeService,
+		NodePrivService:  nodePrivService,
+		NodeTokenService: nodeTokenService,
+		IDTokenService:   idTokenService,
+		// SeriesService:    seriesService,
 	})
 
 	port := mustGetEnv("WS_API_PORT")
-	r.Run(":" + port)
+	log.Infof("server started on port:%v", port)
+
+	tls, exists := os.LookupEnv("WS_TLS")
+	if exists && strings.EqualFold(tls, "true") {
+		r.RunTLS(fmt.Sprintf(":%v", port), mustGetEnv("WS_CERT_FILE"), mustGetEnv("WS_KEY_FILE"))
+	} else {
+		r.Run(fmt.Sprintf(":%v", port))
+	}
 }
 
 func migrateQuestDB(qdb *pgx.Conn, migrationPath string) error {
@@ -182,4 +261,13 @@ func mustGetEnv(key string) string {
 		panic(fmt.Sprintf("%s is required", key))
 	}
 	return value
+}
+
+func mustGetEnvInt(key string) int {
+	value := mustGetEnv(key)
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		panic(fmt.Sprintf("%s must be an integer: %v", key, err))
+	}
+	return n
 }

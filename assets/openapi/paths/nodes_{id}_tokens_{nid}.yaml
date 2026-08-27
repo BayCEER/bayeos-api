@@ -1,0 +1,43 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+    description: node id
+  - name: nid
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+    description: token id
+
+get:
+  tags:
+    - Nodes
+  summary: Get a node token
+  security:
+    - JWTAuth: []
+
+  responses:
+    "200":
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/NodeToken.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+delete:
+  tags:
+    - Nodes
+  summary: Delete a node token
+  security:
+    - JWTAuth: []
+  responses:
+    "200":
+      description: deleted
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

@@ -1,0 +1,49 @@
+get:
+  summary: Get users
+  tags:
+    - "Users"
+  description: Get all users, optionally filtered by id
+  security:
+    - JWTAuth: []
+  parameters:
+    - name: id
+      in: query
+      required: false
+      style: csv
+      explode: false
+      schema:
+        type: array
+        items:
+          type: integer
+          format: int32
+      description: Optional comma-separated list of user ids to filter by
+
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: ../schema/User.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+post:
+  summary: Create a new user
+  tags:
+    - "Users"
+  description: Create a new user"
+  security:
+    - JWTAuth: []
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/SignUpCredentials.yaml
+  responses:
+    "201":
+      description: created
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

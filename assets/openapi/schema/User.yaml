@@ -1,0 +1,33 @@
+type: object
+properties:
+  id:            
+    type: integer
+    format: int32    
+  display_name:
+    type: string
+  sys_user:
+    type: boolean
+  sign_in_name:
+    type: string
+  email_address:
+    type: string
+    format: email
+  super_user:
+    type: boolean
+  home_node_id:
+    type: integer
+    format:  int32
+  last_sign_in_time:
+    type: string
+    format: date-time
+  
+example:      
+  id: 99
+  display_name: Marge Simpson
+  sys_user: false
+  sign_in_name: "marge"
+  email_address: marge.simpson@gmail.com
+  super_user: false
+  home_node_id: 10
+  last_sign_in_time: "2022-12-07T14:02:59.303"
+  

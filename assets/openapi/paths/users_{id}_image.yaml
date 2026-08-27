@@ -1,0 +1,54 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+get:
+  summary: Get a user image
+  tags:
+    - Users
+  security:
+    - JWTAuth: []
+  responses:
+    "200":
+      description: OK
+      content:
+        image/png:
+          schema:
+            type: string
+            format: binary
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+post:
+  summary: Upload a user image
+  tags:
+    - Users
+  security:
+    - JWTAuth: []
+  requestBody:
+    content:
+      multipart/form-data:
+        schema:
+          type: object
+          properties:
+            file:
+              type: string
+              format: binary
+  responses:
+    "201":
+      description: created
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+delete:
+  summary: Delete a user image
+  tags:
+    - Users
+  security:
+    - JWTAuth: []
+  responses:
+    "200":
+      description: deleted
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

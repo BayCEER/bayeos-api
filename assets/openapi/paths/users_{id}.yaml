@@ -1,0 +1,52 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+get:
+  summary: Get a user
+  tags:
+    - Users
+  security:
+    - JWTAuth: []
+
+  responses:
+    "200":
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/User.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+patch:
+  summary: Update a user
+  tags:
+    - Users
+  security:
+    - JWTAuth: []
+  description: Partial update, only send the fields to change; omitted fields are left unchanged.
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/User.yaml
+  responses:
+    "200":
+      description: updated
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+delete:
+  summary: Delete a user
+  tags:
+    - Users
+  security:
+    - JWTAuth: []
+  responses:
+    "200":
+      description: deleted
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

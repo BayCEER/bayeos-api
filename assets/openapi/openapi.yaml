@@ -1,0 +1,73 @@
+openapi: "3.1.0"
+info:
+  title: BayEOS API
+  version: "0.1.0"
+  license:
+    name: Creative Common  BY 4.0
+    url: https://creativecommons.org/licenses/by/4.0/
+  contact:
+    name: Bayreuth Center of Ecology and Environmental Research
+    url: https://www.bayceer.uni-bayreuth.de
+    email: admin@bayceer.uni-bayreuth.de
+
+servers:
+  - url: /api
+    description: current host
+  - url: http://localhost:5532/api
+    description: local host
+components:
+  securitySchemes:
+    BasicAuth:
+      type: http
+      scheme: basic
+    JWTAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: token created on auth sign in endpoint
+    NodeTokenAuth:
+      type: apiKey
+      in: header
+      name: Node-Token
+      description: UUID token as registered on node
+
+paths:
+  /auth/signin:
+    $ref: paths/auth/signin.yaml
+  /auth/signup:
+    $ref: paths/auth/signup.yaml
+  /auth/refresh:
+    $ref: paths/auth/refresh.yaml
+  /auth/password:
+    $ref: paths/auth/password.yaml
+  /auth/signout:
+    $ref: paths/auth/signout.yaml
+  /users:
+    $ref: paths/users.yaml
+  /users/{id}:
+    $ref: paths/users_{id}.yaml
+  /users/{id}/image:
+    $ref: paths/users_{id}_image.yaml
+  /users/{id}/privileges/grantee:
+    description: Get all privileges of a user where the user is the grantee
+    $ref: paths/users_{id}_privileges.yaml
+  /users/{id}/privileges/grantor:
+    description: Get all privileges of a user where the user is the grantor
+    $ref: paths/users_{id}_privileges.yaml
+
+  /nodes:
+    $ref: paths/nodes.yaml
+  /nodes/{id}/search:
+    $ref: paths/nodes_{id}_search.yaml
+  /nodes/{id}/children:
+    $ref: paths/nodes_{id}_children.yaml
+  /nodes/{id}:
+    $ref: paths/nodes_{id}.yaml
+  /nodes/{id}/tokens:
+    $ref: paths/nodes_{id}_tokens.yaml
+  /nodes/{id}/tokens/{nid}:
+    $ref: paths/nodes_{id}_tokens_{nid}.yaml
+  /nodes/{id}/privileges:
+    $ref: paths/nodes_{id}_privileges.yaml
+  /nodes/{id}/privileges/{pid}:
+    $ref: paths/nodes_{id}_privileges_{pid}.yaml

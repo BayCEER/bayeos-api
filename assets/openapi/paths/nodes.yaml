@@ -1,0 +1,34 @@
+security:
+  - JWTAuth: []
+get:
+  tags:
+    - Nodes
+  summary: Get nodes
+
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            array:
+              items:
+                $ref: ../schema/Node.yaml
+
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+post:
+  tags:
+    - Nodes
+  summary: Create a new node
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/NodeCreate.yaml
+  responses:
+    "201":
+      description: created
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

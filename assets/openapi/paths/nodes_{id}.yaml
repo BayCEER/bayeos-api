@@ -1,0 +1,56 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+security:
+  - JWTAuth: []
+
+get:
+  tags:
+    - Nodes
+  summary: Get a node by id
+  parameters:
+    - name: withChildren
+      in: query
+      required: false
+      schema:
+        type: boolean
+
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/Node.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+patch:
+  tags:
+    - Nodes
+  summary: Update a node by id
+  description: Partial update, only send the fields to change; omitted fields are left unchanged.
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/Node.yaml
+  responses:
+    "200":
+      description: updated
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+delete:
+  tags:
+    - Nodes
+  summary: Delete a node by id
+  responses:
+    "200":
+      description: deleted
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

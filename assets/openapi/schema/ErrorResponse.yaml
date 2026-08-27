@@ -1,0 +1,30 @@
+type: object
+required:
+  - error
+  - message
+  - timestamp
+properties:
+  error:
+    type: string
+    description: Machine-readable error code
+  message:
+    type: string
+    description: Human-readable error message
+  details:
+    type: object
+    additionalProperties: true
+    description: Additional error context
+  timestamp:
+    type: string
+    format: date-time
+  traceId:
+    type: string
+    description: Unique identifier for error tracing
+example:
+  error: "InvalidRequest"
+  message: "The request parameters are invalid."
+  details:
+    parameter: "username"
+    issue: "Username is required."
+  timestamp: "2024-06-01T12:34:56Z"
+  traceId: "abc123def456"

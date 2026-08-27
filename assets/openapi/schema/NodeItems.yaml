@@ -1,0 +1,13 @@
+type: array
+properties:
+  id: 
+    type: integer
+    format: int32
+  display_name:
+    type: string
+  kind:
+    type: string
+  permission:    
+    type: integer 
+    minimum: 1
+    maximum: 7

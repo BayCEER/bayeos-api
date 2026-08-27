@@ -1,0 +1,37 @@
+post:
+  tags:
+    - "Authentication"
+  description: "Sign up as a new user"
+  summary: "Self sign up"
+  security: []
+  parameters: []
+  requestBody:
+    content:
+      application/json:
+        schema:
+          required:
+            - "display_name"
+            - "email_address"
+            - "sign_in_name"
+            - "password"
+          type: "object"
+          properties:
+            display_name:
+              type: string
+              example: "Marge Simpson"
+            email_address:
+              type: string
+              format: email
+              example: "marge.simpson@gmail.com"
+            sign_in_name:
+              type: string
+              example: "marge"
+            password:
+              type: string
+              example: "bayeos"
+              minLength: 6
+  responses:
+    "201":
+      description: created
+    default:
+      $ref: ../../components/GenericError.yaml#/GenericError

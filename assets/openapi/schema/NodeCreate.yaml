@@ -1,0 +1,7 @@
+allOf:
+  - $ref: ./Node.yaml
+  - type: object
+    required:
+      - display_name
+      - parent_id
+      - kind

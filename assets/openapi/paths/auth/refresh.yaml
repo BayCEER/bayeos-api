@@ -1,0 +1,20 @@
+put:
+  tags:
+    - "Authentication"
+  description: "Refreh JWT token"
+  summary: Refresh token
+  security:
+    - JWTAuth: []
+  parameters: []
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            type: "object"
+            properties:
+              token:
+                type: string
+    default:
+      $ref: ../../components/GenericError.yaml#/GenericError

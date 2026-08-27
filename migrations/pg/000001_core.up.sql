@@ -6,7 +6,8 @@ CREATE TABLE node (
     display_name text not null,
     kind text not null default 'Folder',    
     parent_id int,
-    path node_path null,       
+    path node_path null, 
+    created_at timestamp with time zone default now(),      
     CONSTRAINT fk_node_parent FOREIGN KEY (parent_id)
         REFERENCES node (id) MATCH SIMPLE
         ON UPDATE NO ACTION

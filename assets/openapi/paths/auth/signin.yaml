@@ -1,0 +1,36 @@
+post:
+  tags:
+    - "Authentication"
+  description: "returns a JWT token to be used in subsequent API calls"
+  summary: Sign in
+  security: []
+  parameters: []
+  requestBody:
+    content:
+      application/json:
+        schema:
+          required:
+            - "name"
+            - "password"
+          type: "object"
+          properties:
+            name:
+              type: string
+              example: "root"
+            password:
+              type: string
+              example: "bayeos"
+              minLength: 6
+
+  responses:
+    "201":
+      description: created
+      content:
+        application/json:
+          schema:
+            type: "object"
+            properties:
+              token:
+                type: string
+    default:
+      $ref: ../../components/GenericError.yaml#/GenericError

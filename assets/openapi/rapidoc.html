@@ -1,0 +1,40 @@
+<!doctype html>
+<!-- Important: must specify -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <script
+      type="module"
+      src="https://unpkg.com/rapidoc/dist/rapidoc-min.js"
+    ></script>
+    <title>BayEOS API</title>
+  </head>
+  <body>
+    <rapi-doc
+      spec-url="openapi.yaml"
+      theme="light"
+      show-header="false"
+      primary-color="#03922c"
+      id="rapidoc"
+      render-style="focused"
+    >
+    </rapi-doc>
+    <script>
+      window.addEventListener("DOMContentLoaded", (event) => {
+        const rapidocEl = document.getElementById("rapidoc");
+        rapidocEl.addEventListener("after-try", (e) => {
+          let url = e.detail.request.url.replace(window.location.origin, "");
+          if (
+            url == "/api/auth/signin" &&
+            e.detail.request.method === "POST" &&
+            e.detail.response.ok
+          ) {
+            e.detail.response.json().then((data) => {
+              rapidocEl.setApiKey("JWTAuth", data.token);
+            });
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
