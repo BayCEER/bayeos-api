@@ -7,8 +7,10 @@ get:
   parameters:
     - name: id
       in: path
-      type: integer
-      format: int32
+      required: true
+      schema:
+        type: integer
+        format: int32
       description: "parent id"
 
   responses:
