@@ -1,0 +1,25 @@
+get:
+  tags:
+    - Nodes
+  summary: Get all parents of a node
+  security:
+    - JWTAuth: []
+  parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int32
+      description: "node id"
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: ../schema/Node.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

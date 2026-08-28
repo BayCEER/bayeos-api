@@ -12,12 +12,6 @@ get:
   tags:
     - Nodes
   summary: Get a node by id
-  parameters:
-    - name: withChildren
-      in: query
-      required: false
-      schema:
-        type: boolean
 
   responses:
     "200":

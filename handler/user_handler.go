@@ -55,15 +55,6 @@ func (h *Handler) GetUsers(c *gin.Context) {
 	}
 }
 
-func (h *Handler) GetAllUsers(c *gin.Context) {
-	if users, err := h.UserService.GetAllUsers(c); err != nil {
-		mw.AbortWithInternalError(c, "Failed to get all users")
-		return
-	} else {
-		c.JSON(http.StatusOK, users)
-	}
-}
-
 func (h *Handler) UpdateUser(c *gin.Context) {
 	if id, err := strings.ParseStringToInt32(c.Param("id")); err != nil {
 		mw.AbortWithInternalError(c, "Invalid id parameter")

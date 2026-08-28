@@ -59,16 +59,6 @@ func (h *Handler) GetNodeChildren(c *gin.Context) {
 	}
 }
 
-func (h *Handler) GetRootNode(c *gin.Context) {
-	if n, err := h.NodeService.GetNode(c, model.ROOT_ID); err != nil {
-		mw.AbortWithNotFoundError(c, "node", "id", fmt.Sprintf("%d", model.ROOT_ID))
-		return
-	} else {
-		c.JSON(http.StatusOK, n)
-	}
-
-}
-
 func (h *Handler) GetNodeParents(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {

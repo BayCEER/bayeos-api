@@ -2,8 +2,23 @@ security:
   - JWTAuth: []
 get:
   tags:
-    - Nodes
+    - "Nodes"
   summary: Get nodes
+  description: Get nodes, optionally filtered by id; only readable nodes are returned
+  security:
+    - JWTAuth: []
+  parameters:
+    - name: id
+      in: query
+      required: false
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: integer
+          format: int32
+      description: Optional list of node ids to filter by; repeat the parameter for each id (e.g. `id=1&id=2`)
 
   responses:
     "200":
@@ -11,9 +26,9 @@ get:
       content:
         application/json:
           schema:
-            array:
-              items:
-                $ref: ../schema/Node.yaml
+            type: array
+            items:
+              $ref: ../schema/Node.yaml
 
     default:
       $ref: ../components/GenericError.yaml#/GenericError

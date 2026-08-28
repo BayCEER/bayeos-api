@@ -5,5 +5,5 @@ type IdBody struct {
 }
 
 type IdFormQuery struct {
-	IDs []int32 `form:"id" collection_format:"csv"`
+	IDs []int32 `form:"id"`
 }

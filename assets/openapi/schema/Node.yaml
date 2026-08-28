@@ -9,10 +9,6 @@ properties:
     pattern: '^\w+$'
   kind:
     type: string
-  created_at:
-    readOnly: true
-    type: string
-    format: date-time
   parent_id:
     type: integer
     format: int32
@@ -21,14 +17,12 @@ properties:
     type: integer
     minimum: 1
     maximum: 7
-  children:
-    $ref: ./NodeItems.yaml
-  parents:
-    $ref: ./NodeItems.yaml
+  node_path:
+    type: string
 example:
   id: 12
   display_name: Springfield
-  created_at: 2024-06-05T12:34:56Z
   kind: Folder
   parent_id: 10
   permission: 5
+  node_path: /BayEOS/Springfield

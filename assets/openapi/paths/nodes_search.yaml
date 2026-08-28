@@ -1,0 +1,45 @@
+get:
+  tags:
+    - Nodes
+  summary: Search for nodes by name
+  security:
+    - JWTAuth: []
+  parameters:
+    - name: query
+      in: query
+      required: false
+      schema:
+        type: string
+      description: 'Query string (default: "")'
+    - name: skip
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+      description: "Number of rows to skip for paging (default: 0)"
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+      description: "Maximum number of rows to return (default: 10)"
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              total:
+                type: integer
+                format: int32
+                description: Total number of hits
+              hits:
+                type: array
+                items:
+                  $ref: ../schema/Node.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

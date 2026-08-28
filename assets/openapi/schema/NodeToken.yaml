@@ -10,10 +10,16 @@ properties:
   node_id:
     type: integer
     format: int32  
+  display_name:
+    type: string
+  active:
+    type: boolean
   token:
     type: string
     format: uuid
 example:
   id: 10
   node_id: 1
+  display_name: "sensor-token"
+  active: true
   token: "79a7632b-ef7c-410a-953f-dda8f80b6979"

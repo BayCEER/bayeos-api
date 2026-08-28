@@ -68,15 +68,15 @@ func NewMainHandler(c *Config) {
 	sec.PATCH("/api/users/:id", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.UpdateUser)
 	sec.DELETE("/api/users/:id", m.AuthSuper(), h.DeleteUser)
 
-	// With permission check
+	// With permission check implemented in handler
 	sec.GET("/api/nodes/search", h.SearchNodes)
+	sec.GET("/api/nodes", h.GetNodes)
 
 	// Node Permissions
 	rwCheck := m.NodePermissionCheck(h.NodeService, mo.READ_PERMISSION+mo.WRITE_PERMISSION)
 	rwgCheck := m.NodePermissionCheck(h.NodeService, mo.FULL_PERMISSION)
 
 	sec.POST("/api/nodes", m.IdFromBody("parent_id", "NodeID"), rwCheck, h.CreateNode)
-	sec.GET("/api/nodes", m.IdFromConst(mo.ROOT_ID, "NodeID"), rwCheck, h.GetRootNode)
 
 	sec.GET("/api/nodes/:id/children", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeChildren)
 	sec.GET("/api/nodes/:id/parents", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeParents)
@@ -90,6 +90,7 @@ func NewMainHandler(c *Config) {
 
 	sec.GET("/api/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeToken)
 	sec.DELETE("/api/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteNodeToken)
+	sec.PATCH("/api/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.UpdateNodeToken)
 
 	sec.GET("/api/nodes/:id/privileges", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodePrivs)
 	sec.POST("/api/nodes/:id/privileges", m.IdFromPath("id", "NodeID"), rwgCheck, h.CreateNodePriv)

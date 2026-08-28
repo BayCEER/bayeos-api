@@ -41,3 +41,21 @@ delete:
       description: deleted
     default:
       $ref: ../components/GenericError.yaml#/GenericError
+
+patch:
+  tags:
+    - Nodes
+  summary: Update a node token
+  description: Partial update, only send the fields to change; omitted fields are left unchanged.
+  security:
+    - JWTAuth: []
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/NodeToken.yaml
+  responses:
+    "200":
+      description: updated
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

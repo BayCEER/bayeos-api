@@ -78,8 +78,8 @@ func (h *Handler) DeleteNodeToken(c *gin.Context) {
 }
 
 func (h *Handler) UpdateNodeToken(c *gin.Context) {
-	if id, err := strings.ParseStringToInt32(c.Param("id")); err != nil {
-		mw.AbortWithBadRequestError(c, "Invalid id parameter")
+	if id, err := strings.ParseStringToInt32(c.Param("nid")); err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid nid parameter")
 		return
 	} else {
 

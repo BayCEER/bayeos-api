@@ -57,10 +57,12 @@ paths:
 
   /nodes:
     $ref: paths/nodes.yaml
-  /nodes/{id}/search:
-    $ref: paths/nodes_{id}_search.yaml
+  /nodes/search:
+    $ref: paths/nodes_search.yaml
   /nodes/{id}/children:
     $ref: paths/nodes_{id}_children.yaml
+  /nodes/{id}/parents:
+    $ref: paths/nodes_{id}_parents.yaml
   /nodes/{id}:
     $ref: paths/nodes_{id}.yaml
   /nodes/{id}/tokens:

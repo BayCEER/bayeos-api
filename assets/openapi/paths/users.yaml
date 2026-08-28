@@ -9,14 +9,14 @@ get:
     - name: id
       in: query
       required: false
-      style: csv
-      explode: false
+      style: form
+      explode: true
       schema:
         type: array
         items:
           type: integer
           format: int32
-      description: Optional comma-separated list of user ids to filter by
+      description: Optional list of user ids to filter by; repeat the parameter for each id (e.g. `id=1&id=2`)
 
   responses:
     "200":
