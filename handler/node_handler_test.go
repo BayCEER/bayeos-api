@@ -131,13 +131,14 @@ func TestGetRootNode(t *testing.T) {
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
-	var node model.Node
-	err = json.Unmarshal(w.Body.Bytes(), &node)
+	var nodes []model.Node
+	err = json.Unmarshal(w.Body.Bytes(), &nodes)
 	require.NoError(t, err)
-	require.Equal(t, int32(1), node.ID)
+	require.Equal(t, 1, len(nodes))
+	require.Equal(t, int32(1), nodes[0].ID)
 
 	// Try to delete root
-	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/api/nodes/%d", node.ID), nil, token)
+	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/api/nodes/%d", nodes[0].ID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -187,5 +188,63 @@ func TestSearchNodes(t *testing.T) {
 }
 
 func TestParentChildRelationship(t *testing.T) {
+	token, err := SignUp("krusty", "secretpassword")
+	require.NoError(t, err)
+	user, err := CurrentUser(token)
+	require.NoError(t, err)
+
+	// CREATE child node
+	node := model.Node{DisplayName: "Krusty Files", ParentID: user.HomeNodeID}
+	req, err := NewJWTRequest("POST", "/api/nodes", node, token)
+	require.NoError(t, err)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	var child model.Node
+	err = json.Unmarshal(w.Body.Bytes(), &child)
+	require.NoError(t, err)
+	require.NotEqual(t, int32(0), child.ID)
+	require.Equal(t, user.HomeNodeID, child.ParentID)
+
+	// GET children of home node -> child is listed
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/children", user.HomeNodeID), nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var children []model.Node
+	err = json.Unmarshal(w.Body.Bytes(), &children)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(children))
+	require.Equal(t, child.ID, children[0].ID)
+
+	// GET parents of child node -> home node and the child itself are returned
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/parents", child.ID), nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var parents []model.Node
+	err = json.Unmarshal(w.Body.Bytes(), &parents)
+	require.NoError(t, err)
+
+	parentIDs := make([]int32, len(parents))
+	for i, p := range parents {
+		parentIDs[i] = p.ID
+	}
+	require.Contains(t, parentIDs, child.ID)
+	require.Contains(t, parentIDs, user.HomeNodeID)
+
+	// User without permission cannot read children of foreign node
+	otherToken, err := SignUp("sideshowbob", "secretpassword")
+	require.NoError(t, err)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/children", user.HomeNodeID), nil, otherToken)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusForbidden, w.Code)
 
 }

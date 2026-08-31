@@ -13,12 +13,12 @@ parameters:
       type: integer
       format: int32
     description: privilege id
-
 get:
   summary: Get a node privilege
   tags:
     - Nodes
-
+  security:
+    - JWTAuth: []
   responses:
     "200":
       description: OK
@@ -31,14 +31,21 @@ get:
 
 patch:
   summary: Update a node privilege permission
-  description: all other body fields are ignored
+  description: Only the permission field is used; all other body fields are ignored.
   tags:
     - Nodes
+  security:
+    - JWTAuth: []
   requestBody:
     content:
       application/json:
         schema:
-          $ref: ../schema/NodePrivilege.yaml
+          type: object
+          properties:
+            permission:
+              type: integer
+              minimum: 1
+              maximum: 7
   responses:
     "200":
       description: updated
@@ -49,6 +56,8 @@ delete:
   summary: Delete a node privilege
   tags:
     - Nodes
+  security:
+    - JWTAuth: []
   responses:
     "200":
       description: deleted

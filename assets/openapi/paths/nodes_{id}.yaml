@@ -5,14 +5,12 @@ parameters:
     schema:
       type: integer
       format: int32
-security:
-  - JWTAuth: []
-
 get:
   tags:
     - Nodes
   summary: Get a node by id
-
+  security:
+    - JWTAuth: []
   responses:
     "200":
       description: ok
@@ -28,6 +26,8 @@ patch:
     - Nodes
   summary: Update a node by id
   description: Partial update, only send the fields to change; omitted fields are left unchanged.
+  security:
+    - JWTAuth: []
   requestBody:
     content:
       application/json:
@@ -43,6 +43,8 @@ delete:
   tags:
     - Nodes
   summary: Delete a node by id
+  security:
+    - JWTAuth: []
   responses:
     "200":
       description: deleted

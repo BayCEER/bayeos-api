@@ -15,7 +15,7 @@ get:
     "200":
       description: OK
       content:
-        image/png:
+        image/jpeg:
           schema:
             type: string
             format: binary
@@ -23,19 +23,18 @@ get:
       $ref: ../components/GenericError.yaml#/GenericError
 post:
   summary: Upload a user image
+  description: The raw image data is sent as the request body (no multipart form encoding).
   tags:
     - Users
   security:
     - JWTAuth: []
   requestBody:
+    required: true
     content:
-      multipart/form-data:
+      application/octet-stream:
         schema:
-          type: object
-          properties:
-            file:
-              type: string
-              format: binary
+          type: string
+          format: binary
   responses:
     "201":
       description: created

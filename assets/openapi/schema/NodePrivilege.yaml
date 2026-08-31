@@ -1,9 +1,9 @@
 type: object
 required:
-  - node_id
   - grantee_id
   - grantor_id
-  - permission  
+  - permission
+description: "node_id defaults to the node in the request path when creating a privilege."  
 properties:
   id:
     readOnly: true

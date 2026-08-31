@@ -31,15 +31,6 @@ get:
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              total:
-                type: integer
-                format: int32
-                description: Total number of hits
-              hits:
-                type: array
-                items:
-                  $ref: ../schema/Node.yaml
+            $ref: ../schema/NodeSearch.yaml
     default:
       $ref: ../components/GenericError.yaml#/GenericError

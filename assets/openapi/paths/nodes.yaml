@@ -1,5 +1,3 @@
-security:
-  - JWTAuth: []
 get:
   tags:
     - "Nodes"
@@ -37,6 +35,8 @@ post:
   tags:
     - Nodes
   summary: Create a new node
+  security:
+    - JWTAuth: []
   requestBody:
     content:
       application/json:
@@ -45,5 +45,9 @@ post:
   responses:
     "201":
       description: created
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/Node.yaml
     default:
       $ref: ../components/GenericError.yaml#/GenericError

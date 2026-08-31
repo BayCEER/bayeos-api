@@ -1,0 +1,12 @@
+type: object
+description: Updateable user attributes. Omitted fields are left unchanged.
+properties:
+  display_name:
+    type: string
+  sign_in_name:
+    type: string
+  email_address:
+    type: string
+    format: email
+  super_user:
+    type: boolean

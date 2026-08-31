@@ -32,9 +32,9 @@ get:
 
 post:
   summary: Create a new user
+  description: Create a new user
   tags:
     - "Users"
-  description: Create a new user"
   security:
     - JWTAuth: []
   requestBody:
@@ -45,5 +45,9 @@ post:
   responses:
     "201":
       description: created
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/User.yaml
     default:
       $ref: ../components/GenericError.yaml#/GenericError

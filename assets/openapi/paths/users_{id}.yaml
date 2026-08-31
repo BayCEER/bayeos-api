@@ -33,7 +33,7 @@ patch:
     content:
       application/json:
         schema:
-          $ref: ../schema/User.yaml
+          $ref: ../schema/UserUpdate.yaml
   responses:
     "200":
       description: updated

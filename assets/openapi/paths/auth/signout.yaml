@@ -21,7 +21,7 @@ post:
             password:
               type: string
               example: "bayeos"
-              minLength: 6
+              minLength: 5
   responses:
     "200":
       description: user signed out

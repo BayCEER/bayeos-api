@@ -6,12 +6,12 @@ parameters:
       type: integer
       format: int32
     description: node id
-security:
-  - JWTAuth: []
 get:
   tags:
     - Nodes
   summary: Get all privileges of a node
+  security:
+    - JWTAuth: []
   responses:
     "200":
       description: Array of node privileges
@@ -25,6 +25,7 @@ get:
       $ref: ../components/GenericError.yaml#/GenericError
 post:
   summary: Create a new node privilege
+  description: "node_id is taken from the path and overrides any value in the body."
   tags:
     - Nodes
   security:
@@ -37,5 +38,9 @@ post:
   responses:
     "201":
       description: created
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/NodePrivilege.yaml
     default:
       $ref: ../components/GenericError.yaml#/GenericError

@@ -54,9 +54,9 @@ func NewMainHandler(c *Config) {
 	sec.POST("/api/auth/signout", h.SignOut)
 
 	sec.GET("/api/users", h.GetUsers)
-	sec.GET("/api/users/:id", h.GetUser)
+	sec.GET("/api/users/:id", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.GetUser)
 
-	sec.GET("/api/users/:id/image", h.GetUserImage)
+	sec.GET("/api/users/:id/image", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.GetUserImage)
 	sec.POST("/api/users/:id/image", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.CreateUserImage)
 	sec.DELETE("/api/users/:id/image", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.DeleteUserImage)
 

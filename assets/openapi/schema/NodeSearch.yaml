@@ -1,0 +1,13 @@
+type: object
+required:
+  - total
+  - hits
+properties:
+  total:
+    type: integer
+    format: int32
+    description: Total number of hits
+  hits:
+    type: array
+    items:
+      $ref: ./Node.yaml
