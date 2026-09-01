@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,124 +9,168 @@ import (
 	"github.com/google/uuid"
 )
 
-func (r *SqlRepo) FindNodeByID(ID int32) (model.Node, error) {
+func (r *SqlRepo) FindNodeByID(ctx context.Context, ID int32) (model.Node, error) {
 	var d model.Node
-	err := r.trans.Get(&d, `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id,  (path).path as node_path FROM node WHERE id=$1`, ID)
+	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id,  (path).path as node_path, created_at FROM node WHERE id=$1`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, &d, stmt, ID)
+	endQuerySpan(span, err)
 	return d, err
 }
 
-func (r *SqlRepo) FindNodesByIDs(ids []int32) ([]model.Node, error) {
+func (r *SqlRepo) FindNodesByIDs(ctx context.Context, ids []int32) ([]model.Node, error) {
 	n := []model.Node{}
-	if err := r.trans.Select(&n, `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id,  (path).path as node_path FROM node WHERE id = ANY($1::int[])`, ids); err != nil {
+	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id,  (path).path as node_path, created_at FROM node WHERE id = ANY($1::int[])`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.SelectContext(c, &n, stmt, ids)
+	endQuerySpan(span, err)
+	if err != nil {
 		return nil, err
 	}
 	return n, nil
 }
 
-func (r *SqlRepo) FindNodeChildrenByID(ID int32) ([]model.Node, error) {
+func (r *SqlRepo) FindNodeChildrenByID(ctx context.Context, ID int32) ([]model.Node, error) {
 	n := []model.Node{}
-	if err := r.trans.Select(&n, `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id,  (path).path as node_path FROM node WHERE parent_id=$1`, ID); err != nil {
+	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id,  (path).path as node_path, created_at FROM node WHERE parent_id=$1`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.SelectContext(c, &n, stmt, ID)
+	endQuerySpan(span, err)
+	if err != nil {
 		return n, err
 	}
 	return n, nil
 }
 
-func (r *SqlRepo) FindNodeParentsByID(ID int32) ([]model.Node, error) {
+func (r *SqlRepo) FindNodeParentsByID(ctx context.Context, ID int32) ([]model.Node, error) {
 	n := []model.Node{}
-	if err := r.trans.Select(&n, `with recursive wf as (
-	SELECT id, display_name, kind, parent_id,  (path).path as node_path, 0 as level from node where id = $1
+	stmt := `with recursive wf as (
+	SELECT id, display_name, kind, parent_id,  (path).path as node_path, created_at, 0 as level from node where id = $1
     union all
-    select n.id, n.display_name, n.kind, n.parent_id, (n.path).path as node_path, wf.level + 1 as level FROM wf JOIN node n on n.id = wf.parent_id
-) 	SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, node_path from wf order by level desc `, ID); err != nil {
+    select n.id, n.display_name, n.kind, n.parent_id, (n.path).path as node_path, n.created_at, wf.level + 1 as level FROM wf JOIN node n on n.id = wf.parent_id
+) 	SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, node_path, created_at from wf order by level desc `
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.SelectContext(c, &n, stmt, ID)
+	endQuerySpan(span, err)
+	if err != nil {
 		return n, err
 	}
 	return n, nil
 }
 
-func (r *SqlRepo) FindNodeByIDAndKindAndName(ID int32, kind string, displayName string) (model.Node, error) {
+func (r *SqlRepo) FindNodeByIDAndKindAndName(ctx context.Context, ID int32, kind string, displayName string) (model.Node, error) {
 	n := model.Node{}
-	if err := r.trans.Get(&n, `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path 
-	FROM node WHERE parent_id=$1 and kind=$2 and display_name=$3`, ID, kind, displayName); err != nil {
+	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, created_at 
+	FROM node WHERE parent_id=$1 and kind=$2 and display_name=$3`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, &n, stmt, ID, kind, displayName)
+	endQuerySpan(span, err)
+	if err != nil {
 		return n, err
 	}
 	return n, nil
 }
 
-func (r *SqlRepo) CreateNode(n *model.Node) error {
-	if err := r.trans.Get(n, `INSERT INTO node (display_name,kind,parent_id) VALUES ($1,$2,$3) RETURNING id,display_name,kind,coalesce(parent_id,0) as parent_id, (path).path as node_path`,
-		n.DisplayName, n.Kind, n.ParentID); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (r *SqlRepo) UpdateNode(n *model.Node) error {
-	if err := r.trans.Get(n, `UPDATE node set display_name=$1,kind=$2, parent_id=$3 where id=$4 RETURNING id,display_name,kind,coalesce(parent_id,0) as parent_id, (path).path as node_path`,
-		n.DisplayName, n.Kind, n.ParentID, n.ID); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (r *SqlRepo) DeleteNodeByID(ID int32) error {
-	return execDelete(r.trans, `DELETE FROM node where id = $1`, ID)
-}
-
-func (r *SqlRepo) FindNodesByPath(query string) ([]model.Node, error) {
-	n := []model.Node{}
-	if err := r.trans.Select(&n, `SELECT id, display_name, kind, parent_id, (path).path as node_path FROM node 	WHERE (path).path like $1`, fmt.Sprintf("%%%v%%", query)); err != nil {
-		return n, err
-	}
-	return n, nil
-}
-
-func (r *SqlRepo) UpdateNodeFieldByID(ID int32, name string, value interface{}) error {
-	if e := r.CheckFieldName(model.Node{}, name); e != nil {
-		return e
-	}
-	_, err := r.trans.Exec(fmt.Sprintf("UPDATE node set %v=$1 where ID=$2", name), value, ID)
+func (r *SqlRepo) CreateNode(ctx context.Context, n *model.Node) error {
+	stmt := `INSERT INTO node (display_name,kind,parent_id) VALUES ($1,$2,$3) RETURNING id,display_name,kind,coalesce(parent_id,0) as parent_id, (path).path as node_path, created_at`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, n, stmt,
+		n.DisplayName, n.Kind, n.ParentID)
+	endQuerySpan(span, err)
 	return err
 }
 
-func (r *SqlRepo) FindNodeByPath(path string) (model.Node, error) {
-	n := model.Node{}
-	if err := r.trans.Get(&n, "select id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path from node where (path).\"path\" = $1", path); err != nil {
+func (r *SqlRepo) UpdateNode(ctx context.Context, n *model.Node) error {
+	stmt := `UPDATE node set display_name=$1,kind=$2, parent_id=$3 where id=$4 RETURNING id,display_name,kind,coalesce(parent_id,0) as parent_id, (path).path as node_path`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, n, stmt,
+		n.DisplayName, n.Kind, n.ParentID, n.ID)
+	endQuerySpan(span, err)
+	return err
+}
+
+func (r *SqlRepo) DeleteNodeByID(ctx context.Context, ID int32) error {
+	stmt := `DELETE FROM node where id = $1`
+	c, span := withQuerySpan(ctx, stmt)
+	err := execDeleteContext(c, r.trans, stmt, ID)
+	endQuerySpan(span, err)
+	return err
+}
+
+func (r *SqlRepo) FindNodesByPath(ctx context.Context, query string) ([]model.Node, error) {
+	n := []model.Node{}
+	stmt := `SELECT id, display_name, kind, parent_id, (path).path as node_path, created_at FROM node WHERE (path).path like $1 and parent_id is not null order by (path).path`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.SelectContext(c, &n, stmt, fmt.Sprintf("%%%v%%", query))
+	endQuerySpan(span, err)
+	if err != nil {
 		return n, err
 	}
 	return n, nil
-
 }
 
-func (r *SqlRepo) FindNodeByToken(token uuid.UUID) (model.Node, error) {
+func (r *SqlRepo) UpdateNodeFieldByID(ctx context.Context, ID int32, name string, value interface{}) error {
+	stmt := fmt.Sprintf("UPDATE node set %v=$1 where ID=$2", name)
+	c, span := withQuerySpan(ctx, stmt)
+	if e := r.CheckFieldName(model.Node{}, name); e != nil {
+		endQuerySpan(span, e)
+		return e
+	}
+	_, err := r.trans.ExecContext(c, stmt, value, ID)
+	endQuerySpan(span, err)
+	return err
+}
+
+func (r *SqlRepo) FindNodeByPath(ctx context.Context, path string) (model.Node, error) {
 	n := model.Node{}
-	if err := r.trans.Get(&n, `SELECT n.id, n.display_name, n.kind, coalesce(n.parent_id,0) as parent_id, (path).path as node_path FROM node n join node_token t on n.id = t.node_id WHERE t.token = $1`, token); err != nil {
+	stmt := `select id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, created_at from node where (path)."path" = $1`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, &n, stmt, path)
+	endQuerySpan(span, err)
+	if err != nil {
 		return n, err
 	}
 	return n, nil
 }
 
-func (r *SqlRepo) FindOrCreateNodesByPath(startNodeID int32, path string, leafType string) (model.Node, error) {
+func (r *SqlRepo) FindNodeByToken(ctx context.Context, token uuid.UUID) (model.Node, error) {
+	n := model.Node{}
+	stmt := `SELECT n.id, n.display_name, n.kind, coalesce(n.parent_id,0) as parent_id, (path).path as node_path, n.created_at FROM node n join node_token t on n.id = t.node_id WHERE t.token = $1`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, &n, stmt, token)
+	endQuerySpan(span, err)
+	if err != nil {
+		return n, err
+	}
+	return n, nil
+}
+
+func (r *SqlRepo) FindOrCreateNodesByPath(ctx context.Context, startNodeID int32, path string, leafType string) (model.Node, error) {
 	kind := "Folder"
 	before, after, found := strings.Cut(path, "/")
 	if !found {
 		kind = leafType
 	}
-	node, err := r.FindNodeByIDAndKindAndName(startNodeID, kind, before)
+	node, err := r.FindNodeByIDAndKindAndName(ctx, startNodeID, kind, before)
 	if err != nil {
 		node = model.Node{DisplayName: before, Kind: kind, ParentID: startNodeID}
-		if err := r.CreateNode(&node); err != nil {
+		if err := r.CreateNode(ctx, &node); err != nil {
 			return model.Node{}, err
 		}
 	}
 	if found {
-		return r.FindOrCreateNodesByPath(node.ID, after, leafType)
+		return r.FindOrCreateNodesByPath(ctx, node.ID, after, leafType)
 	}
 	return node, nil
 }
 
-func (r *SqlRepo) GetNodePermission(nodeID int32, userID int32) (uint8, error) {
+func (r *SqlRepo) GetNodePermission(ctx context.Context, nodeID int32, userID int32) (uint8, error) {
 	var p uint8
-	if err := r.trans.Get(&p, `SELECT get_node_permission($1,$2)`, nodeID, userID); err != nil {
+	stmt := `SELECT get_node_permission($1,$2)`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, &p, stmt, nodeID, userID)
+	endQuerySpan(span, err)
+	if err != nil {
 		return 0, err
 	}
 	return p, nil

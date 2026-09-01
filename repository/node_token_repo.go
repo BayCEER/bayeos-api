@@ -1,41 +1,57 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 )
 
-func (r *SqlRepo) FindNodeTokenByID(ID int32) (model.NodeToken, error) {
+func (r *SqlRepo) FindNodeTokenByID(ctx context.Context, ID int32) (model.NodeToken, error) {
 	var t model.NodeToken
-	err := r.trans.Get(&t, `SELECT * FROM node_token WHERE id=$1`, ID)
+	stmt := `SELECT * FROM node_token WHERE id=$1`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, &t, stmt, ID)
+	endQuerySpan(span, err)
 	return t, err
 }
 
-func (r *SqlRepo) FindNodeTokensByNodeID(ID int32) ([]model.NodeToken, error) {
+func (r *SqlRepo) FindNodeTokensByNodeID(ctx context.Context, ID int32) ([]model.NodeToken, error) {
 	t := []model.NodeToken{}
-	if err := r.trans.Select(&t, `select * from node_token where node_id=$1`, ID); err != nil {
+	stmt := `select * from node_token where node_id=$1`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.SelectContext(c, &t, stmt, ID)
+	endQuerySpan(span, err)
+	if err != nil {
 		return t, err
 	}
 	return t, nil
 }
 
-func (r *SqlRepo) CreateNodeToken(e *model.NodeToken) error {
-	if err := r.trans.Get(e, `INSERT INTO node_token (node_id,token) VALUES ($1,$2) RETURNING *`,
-		e.NodeID, e.Token); err != nil {
-		return err
-	}
-	return nil
+func (r *SqlRepo) CreateNodeToken(ctx context.Context, e *model.NodeToken) error {
+	stmt := `INSERT INTO node_token (node_id,token) VALUES ($1,$2) RETURNING *`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, e, stmt,
+		e.NodeID, e.Token)
+	endQuerySpan(span, err)
+	return err
 }
 
-func (r *SqlRepo) DeleteNodeTokenByID(ID int32) error {
-	return execDelete(r.trans, "DELETE from node_token where id=$1", ID)
+func (r *SqlRepo) DeleteNodeTokenByID(ctx context.Context, ID int32) error {
+	stmt := `DELETE from node_token where id=$1`
+	c, span := withQuerySpan(ctx, stmt)
+	err := execDeleteContext(c, r.trans, stmt, ID)
+	endQuerySpan(span, err)
+	return err
 }
 
-func (r *SqlRepo) UpdateNodeTokenFieldByID(ID int32, name string, value interface{}) error {
+func (r *SqlRepo) UpdateNodeTokenFieldByID(ctx context.Context, ID int32, name string, value interface{}) error {
 	if e := r.CheckFieldName(model.NodeToken{}, name); e != nil {
 		return e
 	}
-	_, err := r.trans.Exec(fmt.Sprintf("UPDATE node_token set %v=$1 where ID=$2", name), value, ID)
+	stmt := fmt.Sprintf("UPDATE node_token set %v=$1 where ID=$2", name)
+	c, span := withQuerySpan(ctx, stmt)
+	_, err := r.trans.ExecContext(c, stmt, value, ID)
+	endQuerySpan(span, err)
 	return err
 }

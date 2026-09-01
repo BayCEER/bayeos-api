@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/BayCEER/bayeos/bayeos-api/strings"
 	"github.com/gin-gonic/gin"
 )
@@ -79,22 +78,5 @@ func IdFromConst(id int32, ctxKey string) gin.HandlerFunc {
 			c.Set(ctxKey, id)
 		}
 		c.Next()
-	}
-}
-
-func PermissionFromMethod(method string) uint8 {
-	switch method {
-	case "GET":
-		return model.READ_PERMISSION
-	case "PUT":
-		return model.WRITE_PERMISSION
-	case "POST":
-		return model.WRITE_PERMISSION
-	case "PATCH":
-		return model.WRITE_PERMISSION
-	case "DELETE":
-		return model.WRITE_PERMISSION
-	default:
-		return 0
 	}
 }

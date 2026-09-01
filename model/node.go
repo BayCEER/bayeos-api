@@ -2,18 +2,20 @@ package model
 
 import (
 	"github.com/google/uuid"
+	"gopkg.in/guregu/null.v4"
 )
 
 const ROOT_ID = 1
 const HOME_ID = 2
 
 type Node struct {
-	ID          int32  `db:"id" json:"id"`
-	DisplayName string `db:"display_name" json:"display_name"`
-	Kind        string `db:"kind" json:"kind"`
-	ParentID    int32  `db:"parent_id" json:"parent_id"`
-	Permission  uint8  `db:"permission" json:"permission"`
-	NodePath    string `db:"node_path" json:"node_path"`
+	ID          int32     `db:"id" json:"id"`
+	DisplayName string    `db:"display_name" json:"display_name"`
+	Kind        string    `db:"kind" json:"kind"`
+	ParentID    int32     `db:"parent_id" json:"parent_id"`
+	Permission  uint8     `db:"permission" json:"permission"`
+	NodePath    string    `db:"node_path" json:"node_path"`
+	CreatedAt   null.Time `db:"created_at" json:"created_at"`
 }
 
 type NodePrivilege struct {

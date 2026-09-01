@@ -12,7 +12,7 @@ func NodeBasicAuth(u service.UserService, n service.NodeService) gin.HandlerFunc
 		if _, exists := c.Get("Node"); !exists {
 			user, password, hasAuth := c.Request.BasicAuth()
 			if hasAuth {
-				usr, err := u.SignIn(c, model.SignInCredentials{Name: user, Password: password})
+				usr, err := u.SignIn(c.Request.Context(), model.SignInCredentials{Name: user, Password: password})
 				if err != nil {
 					AbortWithUnauthorizedError(c, "signin failed")
 					return
@@ -34,7 +34,7 @@ func NodeToken(s service.NodeService) gin.HandlerFunc {
 			h := header{}
 			if err := ctx.ShouldBindHeader(&h); err == nil {
 				if t, err := uuid.Parse(h.NodeToken); err == nil {
-					if n, err := s.FindNodeByToken(ctx, t); err == nil {
+					if n, err := s.FindNodeByToken(ctx.Request.Context(), t); err == nil {
 						ctx.Set("NodeID", n.ID)
 					} else {
 						AbortWithNotFoundError(ctx, "node", "token", h.NodeToken)

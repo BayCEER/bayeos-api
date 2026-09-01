@@ -25,22 +25,22 @@ func NewNodeTokenService(sqlRepo repository.SqlRepo) NodeTokenService {
 }
 
 func (s *nodeTokenService) GetNodeToken(ctx context.Context, id int32) (model.NodeToken, error) {
-	return s.sqlRepo.FindNodeTokenByID(id)
+	return s.sqlRepo.FindNodeTokenByID(ctx, id)
 }
 
 func (s *nodeTokenService) CreateNodeToken(ctx context.Context, e *model.NodeToken) error {
-	return s.sqlRepo.CreateNodeToken(e)
+	return s.sqlRepo.CreateNodeToken(ctx, e)
 }
 
 func (s *nodeTokenService) DeleteNodeToken(ctx context.Context, id int32) error {
-	return s.sqlRepo.DeleteNodeTokenByID(id)
+	return s.sqlRepo.DeleteNodeTokenByID(ctx, id)
 }
 
 func (s *nodeTokenService) UpdateNodeToken(ctx context.Context, id int32, fields *map[string]interface{}) error {
 
-	if err := s.sqlRepo.Do(context.Background(), func(repo repository.SqlRepo) error {
+	if err := s.sqlRepo.Do(ctx, func(repo repository.SqlRepo) error {
 		for k, v := range *fields {
-			if err := s.sqlRepo.UpdateNodeTokenFieldByID(id, k, v); err != nil {
+			if err := s.sqlRepo.UpdateNodeTokenFieldByID(ctx, id, k, v); err != nil {
 				return err
 			}
 		}

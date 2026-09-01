@@ -18,7 +18,7 @@ func (h *Handler) GetNodeTokens(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	tokens, err := h.NodeService.GetNodeTokens(c, id)
+	tokens, err := h.NodeService.GetNodeTokens(c.Request.Context(), id)
 	if err != nil {
 		mw.AbortWithInternalError(c, "Failed to get node tokens")
 		return
@@ -32,7 +32,7 @@ func (h *Handler) GetNodeToken(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "invalid query parameter")
 		return
 	} else {
-		if nt, err := h.NodeTokenService.GetNodeToken(c, nid); err != nil {
+		if nt, err := h.NodeTokenService.GetNodeToken(c.Request.Context(), nid); err != nil {
 			mw.AbortWithNotFoundError(c, "NodeToken", "nid", c.Param("nid"))
 			return
 		} else {
@@ -52,7 +52,7 @@ func (h *Handler) CreateNodeToken(c *gin.Context) {
 		nt := model.NodeToken{}
 		nt.NodeID = id
 		nt.Token = uuid.New()
-		if err := h.NodeTokenService.CreateNodeToken(c, &nt); err != nil {
+		if err := h.NodeTokenService.CreateNodeToken(c.Request.Context(), &nt); err != nil {
 			mw.AbortWithInternalError(c, "Failed to create node token")
 			return
 		} else {
@@ -66,7 +66,7 @@ func (h *Handler) DeleteNodeToken(c *gin.Context) {
 	if nid, err := strings.ParseStringToInt32(c.Param("nid")); err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 	} else {
-		if err := h.NodeTokenService.DeleteNodeToken(c, nid); err != nil {
+		if err := h.NodeTokenService.DeleteNodeToken(c.Request.Context(), nid); err != nil {
 			if mw.AbortWithNotFoundIfNoRows(c, err, "NodeToken", "nid", c.Param("nid")) {
 				return
 			}
@@ -101,7 +101,7 @@ func (h *Handler) UpdateNodeToken(c *gin.Context) {
 			mw.AbortWithBadRequestError(c, "Invalid field data in request body")
 			return
 		}
-		if err := h.NodeTokenService.UpdateNodeToken(c, id, &fields); err != nil {
+		if err := h.NodeTokenService.UpdateNodeToken(c.Request.Context(), id, &fields); err != nil {
 			mw.AbortWithInternalError(c, "Failed to update node token")
 			return
 		}

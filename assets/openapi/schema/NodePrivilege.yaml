@@ -1,21 +1,22 @@
 type: object
 required:
   - grantee_id
-  - grantor_id
   - permission
-description: "node_id defaults to the node in the request path when creating a privilege."  
+description: "node_id defaults to the node in the request path; grantor_id is derived from the authenticated user when creating a privilege."
 properties:
   id:
     readOnly: true
     type: integer
     format: int32          
   node_id:
+    readOnly: true
     type: integer
     format: int32
   grantee_id:
     type: integer
     format: int32   
   grantor_id:
+    readOnly: true
     type: integer
     format: int32   
   permission:    

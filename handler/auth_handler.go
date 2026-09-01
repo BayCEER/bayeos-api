@@ -17,7 +17,7 @@ func (h *Handler) SignIn(c *gin.Context) {
 		return
 	}
 
-	u, err := h.UserService.SignIn(c, cre)
+	u, err := h.UserService.SignIn(c.Request.Context(), cre)
 	if err != nil {
 		mw.AbortWithBadRequestError(c, "Signin failed")
 		return
@@ -41,7 +41,7 @@ func (h *Handler) SignUp(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid sign up values.")
 		return
 	}
-	_, err := h.UserService.CreateUser(c, cre)
+	_, err := h.UserService.CreateUser(c.Request.Context(), cre)
 	if err != nil {
 		mw.AbortWithInternalError(c, "Sign up failed.")
 		return
@@ -56,7 +56,7 @@ func (h *Handler) SignOut(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid sign out values.")
 		return
 	}
-	err := h.UserService.SignOut(c, cre)
+	err := h.UserService.SignOut(c.Request.Context(), cre)
 	if err != nil {
 		mw.AbortWithInternalError(c, "Signout failed.")
 		return
@@ -82,7 +82,7 @@ func (h *Handler) SetPassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.UserService.SetPassword(c, sc); err != nil {
+	if err := h.UserService.SetPassword(c.Request.Context(), sc); err != nil {
 		mw.AbortWithInternalError(c, "Failed to set password")
 		return
 

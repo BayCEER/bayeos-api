@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/BayCEER/bayeos/bayeos-api/model"
+	"github.com/BayCEER/bayeos/bayeos-api/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -183,21 +184,53 @@ func TestUserImageCRUD(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, w.Code)
 
 	// Create image from raw body
-	imageData := bytes.Repeat([]byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10}, 64)
-	req, err = NewJWTReaderRequest("POST", fmt.Sprintf("/api/users/%d/image", user.ID), bytes.NewReader(imageData), token)
+	jpegData := bytes.Repeat([]byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10}, 64)
+	req, err = NewJWTReaderRequest("POST", fmt.Sprintf("/api/users/%d/image", user.ID), bytes.NewReader(jpegData), token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
-	// Get image -> 200 with exactly the uploaded bytes
+	// Get image -> 200 with exactly the uploaded bytes and JPEG content type
 	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/users/%d/image", user.ID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, "image/jpeg", w.Header().Get("Content-Type"))
-	require.Equal(t, imageData, w.Body.Bytes())
+	require.Equal(t, jpegData, w.Body.Bytes())
+
+	// Upload unsupported format -> 415
+	req, err = NewJWTReaderRequest("POST", fmt.Sprintf("/api/users/%d/image", user.ID), bytes.NewReader([]byte("this is not an image")), token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusUnsupportedMediaType, w.Code)
+
+	// Upload image exceeding the maximum size -> 413
+	oversized := bytes.Repeat([]byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10}, service.MaxUserImageBytes/6+2)
+	req, err = NewJWTReaderRequest("POST", fmt.Sprintf("/api/users/%d/image", user.ID), bytes.NewReader(oversized), token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+
+	// Re-upload as PNG replaces the stored image
+	pngData := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52}
+	req, err = NewJWTReaderRequest("POST", fmt.Sprintf("/api/users/%d/image", user.ID), bytes.NewReader(pngData), token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	// Get image -> PNG content type and exactly the re-uploaded bytes
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/users/%d/image", user.ID), nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "image/png", w.Header().Get("Content-Type"))
+	require.Equal(t, pngData, w.Body.Bytes())
 
 	// Another non-super user cannot read, create or delete the image of others
 	otherToken, err := SignUp("moe", "secretpassword")
@@ -208,7 +241,7 @@ func TestUserImageCRUD(t *testing.T) {
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusForbidden, w.Code)
 
-	req, err = NewJWTReaderRequest("POST", fmt.Sprintf("/api/users/%d/image", user.ID), bytes.NewReader(imageData), otherToken)
+	req, err = NewJWTReaderRequest("POST", fmt.Sprintf("/api/users/%d/image", user.ID), bytes.NewReader(jpegData), otherToken)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)

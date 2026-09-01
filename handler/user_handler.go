@@ -2,11 +2,13 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
 	mw "github.com/BayCEER/bayeos/bayeos-api/middleware"
 	"github.com/BayCEER/bayeos/bayeos-api/model"
+	"github.com/BayCEER/bayeos/bayeos-api/service"
 	"github.com/BayCEER/bayeos/bayeos-api/strings"
 	"github.com/gin-gonic/gin"
 )
@@ -17,7 +19,7 @@ func (h *Handler) CreateUser(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid sign up values.")
 		return
 	}
-	u, err := h.UserService.CreateUser(c, cre)
+	u, err := h.UserService.CreateUser(c.Request.Context(), cre)
 	if err != nil {
 		mw.AbortWithInternalError(c, "Sign up failed.")
 		return
@@ -30,7 +32,7 @@ func (h *Handler) GetUser(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	} else {
-		if u, err := h.UserService.GetUser(c, id); err != nil {
+		if u, err := h.UserService.GetUser(c.Request.Context(), id); err != nil {
 			mw.AbortWithNotFoundError(c, "User", "id", c.Param("id"))
 			return
 		} else {
@@ -47,7 +49,7 @@ func (h *Handler) GetUsers(c *gin.Context) {
 		return
 	}
 
-	if users, err := h.UserService.GetUsers(c, query.IDs); err != nil {
+	if users, err := h.UserService.GetUsers(c.Request.Context(), query.IDs); err != nil {
 		mw.AbortWithInternalError(c, "Failed to get users")
 		return
 	} else {
@@ -79,7 +81,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 			mw.AbortWithBadRequestError(c, "Invalid request body")
 			return
 		}
-		if err := h.UserService.UpdateUser(c, id, &fields); err != nil {
+		if err := h.UserService.UpdateUser(c.Request.Context(), id, &fields); err != nil {
 			mw.AbortWithInternalError(c, "Failed to update user")
 			return
 		}
@@ -92,7 +94,7 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	} else {
-		if err := h.UserService.DeleteUser(c, id); err != nil {
+		if err := h.UserService.DeleteUser(c.Request.Context(), id); err != nil {
 			if mw.AbortWithNotFoundIfNoRows(c, err, "user", "id", c.Param("id")) {
 				return
 			}
@@ -108,11 +110,11 @@ func (h *Handler) GetUserImage(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	} else {
-		if imageData, err := h.UserService.GetUserImage(c, id); err != nil {
+		if imageData, mimeType, err := h.UserService.GetUserImage(c.Request.Context(), id); err != nil {
 			mw.AbortWithNotFoundError(c, "UserImage", "id", c.Param("id"))
 			return
 		} else {
-			c.Data(http.StatusOK, "image/jpeg", imageData)
+			c.Data(http.StatusOK, mimeType, imageData)
 		}
 	}
 }
@@ -126,7 +128,13 @@ func (h *Handler) CreateUserImage(c *gin.Context) {
 	// Request contains raw binary data
 	err = h.UserService.CreateUserImage(c.Request.Context(), id, c.Request.Body)
 	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
+		if errors.Is(err, service.ErrUnsupportedImageType) {
+			mw.Abort(c, mw.New(http.StatusUnsupportedMediaType, "UnsupportedMediaType", err.Error()))
+		} else if errors.Is(err, service.ErrImageTooLarge) {
+			mw.Abort(c, mw.New(http.StatusRequestEntityTooLarge, "ImageTooLarge", err.Error()))
+		} else {
+			mw.AbortWithInternalError(c, "Failed to upload user image")
+		}
 		return
 	}
 
@@ -140,7 +148,7 @@ func (h *Handler) DeleteUserImage(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	} else {
-		if err := h.UserService.DeleteUserImage(c, id); err != nil {
+		if err := h.UserService.DeleteUserImage(c.Request.Context(), id); err != nil {
 			if mw.AbortWithNotFoundIfNoRows(c, err, "UserImage", "id", c.Param("id")) {
 				return
 			}

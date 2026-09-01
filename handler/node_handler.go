@@ -20,11 +20,16 @@ func (h *Handler) GetNode(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	} else {
-		if n, err := h.NodeService.GetNode(c, int32(id)); err != nil {
-			mw.AbortWithNotFoundError(c, "node", "id", c.Param("id"))
+		if err, userID := h.getUserID(c); err != nil {
+			mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
 			return
 		} else {
-			c.JSON(http.StatusOK, n)
+			if n, err := h.NodeService.GetNode(c.Request.Context(), int32(id), userID); err != nil {
+				mw.AbortWithNotFoundError(c, "node", "id", c.Param("id"))
+				return
+			} else {
+				c.JSON(http.StatusOK, n)
+			}
 		}
 	}
 }
@@ -35,11 +40,18 @@ func (h *Handler) GetNodes(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid query parameters")
 		return
 	}
-	if nodes, err := h.NodeService.GetNodes(c, query.IDs); err != nil {
-		mw.AbortWithInternalError(c, "Nodes not found")
+
+	if err, userID := h.getUserID(c); err != nil {
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
 		return
 	} else {
-		c.JSON(http.StatusOK, nodes)
+		if nodes, err := h.NodeService.GetNodes(c.Request.Context(), query.IDs, userID); err != nil {
+			mw.AbortWithInternalError(c, "Nodes not found")
+			return
+		} else {
+			c.JSON(http.StatusOK, nodes)
+		}
+
 	}
 
 }
@@ -49,8 +61,13 @@ func (h *Handler) GetNodeChildren(c *gin.Context) {
 	if err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
+	}
+
+	if err, userID := h.getUserID(c); err != nil {
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
+		return
 	} else {
-		if n, err := h.NodeService.GetNodeChildren(c, int32(id)); err != nil {
+		if n, err := h.NodeService.GetNodeChildren(c.Request.Context(), int32(id), userID); err != nil {
 			mw.AbortWithNotFoundError(c, "node", "id", c.Param("id"))
 			return
 		} else {
@@ -64,8 +81,13 @@ func (h *Handler) GetNodeParents(c *gin.Context) {
 	if err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
+	}
+
+	if err, userID := h.getUserID(c); err != nil {
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
+		return
 	} else {
-		if n, err := h.NodeService.GetNodeParents(c, int32(id)); err != nil {
+		if n, err := h.NodeService.GetNodeParents(c.Request.Context(), int32(id), userID); err != nil {
 			mw.AbortWithNotFoundError(c, "node", "id", c.Param("id"))
 		} else {
 			c.JSON(http.StatusOK, n)
@@ -86,7 +108,12 @@ func (h *Handler) SearchNodes(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid limit parameter")
 		return
 	}
-	if total, nodes, err := h.NodeService.FindNodesByPath(c, query, skip, limit); err != nil {
+	err, userID := h.getUserID(c)
+	if err != nil {
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
+		return
+	}
+	if total, nodes, err := h.NodeService.FindNodesByPath(c.Request.Context(), query, skip, limit, userID); err != nil {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Search failed: %v", err))
 	} else {
 		c.JSON(http.StatusOK, gin.H{"total": total, "hits": nodes})
@@ -101,7 +128,13 @@ func (h *Handler) CreateNode(c *gin.Context) {
 		return
 	}
 
-	if err := h.NodeService.CreateNode(c, &d); err != nil {
+	err, userID := h.getUserID(c)
+	if err != nil {
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
+		return
+	}
+
+	if err := h.NodeService.CreateNode(c.Request.Context(), &d, userID); err != nil {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to create node: %v", err))
 		return
 	}
@@ -113,7 +146,7 @@ func (h *Handler) DeleteNode(c *gin.Context) {
 	if id, err := strings.ParseStringToInt32(c.Param("id")); err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 	} else {
-		if err := h.NodeService.DeleteNode(c, id); err != nil {
+		if err := h.NodeService.DeleteNode(c.Request.Context(), id); err != nil {
 			if mw.AbortWithNotFoundIfNoRows(c, err, "node", "id", c.Param("id")) {
 				return
 			}
@@ -149,10 +182,19 @@ func (h *Handler) UpdateNode(c *gin.Context) {
 			mw.AbortWithBadRequestError(c, "Invalid request body")
 			return
 		}
-		if err := h.NodeService.UpdateNode(c, id, &fields); err != nil {
+		if err := h.NodeService.UpdateNode(c.Request.Context(), id, &fields); err != nil {
 			mw.AbortWithInternalError(c, fmt.Sprintf("Failed to update node: %v", err))
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "Node updated"})
 	}
+}
+
+func (h *Handler) getUserID(c *gin.Context) (error, int32) {
+	user, exists := c.Get("User")
+	if !exists {
+		return fmt.Errorf("user not found in context"), 0
+	}
+	u := user.(model.User)
+	return nil, u.ID
 }

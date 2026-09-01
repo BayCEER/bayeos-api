@@ -36,7 +36,7 @@ func NodePermissionCheck(a NodeAuthorizer, perm uint8) gin.HandlerFunc {
 			p = p + model.GRANT_PERMISSION
 		}
 
-		b, err := a.HasPermission(c, nodeID.(int32), p, user.(model.User).ID)
+		b, err := a.HasPermission(c.Request.Context(), nodeID.(int32), p, user.(model.User).ID)
 		if err != nil {
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
@@ -49,5 +49,22 @@ func NodePermissionCheck(a NodeAuthorizer, perm uint8) gin.HandlerFunc {
 
 		c.Next()
 
+	}
+}
+
+func PermissionFromMethod(method string) uint8 {
+	switch method {
+	case "GET":
+		return model.READ_PERMISSION
+	case "PUT":
+		return model.WRITE_PERMISSION
+	case "POST":
+		return model.WRITE_PERMISSION
+	case "PATCH":
+		return model.WRITE_PERMISSION
+	case "DELETE":
+		return model.WRITE_PERMISSION
+	default:
+		return 0
 	}
 }

@@ -19,11 +19,15 @@ get:
           schema:
             type: string
             format: binary
+        image/png:
+          schema:
+            type: string
+            format: binary
     default:
       $ref: ../components/GenericError.yaml#/GenericError
 post:
   summary: Upload a user image
-  description: The raw image data is sent as the request body (no multipart form encoding).
+  description: The raw image data is sent as the request body (no multipart form encoding). Only PNG and JPEG images are allowed.
   tags:
     - Users
   security:
@@ -31,13 +35,29 @@ post:
   requestBody:
     required: true
     content:
-      application/octet-stream:
+      image/jpeg:
+        schema:
+          type: string
+          format: binary
+      image/png:
         schema:
           type: string
           format: binary
   responses:
     "201":
       description: created
+    "413":
+      description: image exceeds the maximum allowed size
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/ErrorResponse.yaml
+    "415":
+      description: unsupported image type, only PNG and JPEG are allowed
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/ErrorResponse.yaml
     default:
       $ref: ../components/GenericError.yaml#/GenericError
 delete:

@@ -16,6 +16,9 @@ type DBTX interface {
 	NamedExec(query string, arg interface{}) (sql.Result, error)
 	Get(dest interface{}, query string, args ...interface{}) error
 	Select(dest interface{}, query string, args ...interface{}) error
+	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
+	GetContext(context.Context, interface{}, string, ...interface{}) error
+	SelectContext(context.Context, interface{}, string, ...interface{}) error
 }
 
 type Transaction interface {
@@ -23,9 +26,13 @@ type Transaction interface {
 	NextID(table string) (uint, error)
 }
 
-func (r *SqlRepo) NextID(table string) (uint, error) {
+func (r *SqlRepo) NextID(ctx context.Context, table string) (uint, error) {
 	var u uint
-	if err := r.db.QueryRow("select nextval('$1_id_seq'::regclass);", table).Scan(&u); err != nil {
+	stmt := "select nextval('$1_id_seq'::regclass);"
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.db.QueryRowContext(c, stmt, table).Scan(&u)
+	endQuerySpan(span, err)
+	if err != nil {
 		return 0, err
 	}
 	return u, nil
@@ -63,8 +70,17 @@ func (r *SqlRepo) Conn(ctx context.Context) (*sql.Conn, error) {
 }
 
 // execDelete runs a delete/update query and returns sql.ErrNoRows if no rows were affected.
-func execDelete(x DBTX, query string, args ...interface{}) error {
-	res, err := x.Exec(query, args...)
+
+// execDeleteContext runs a delete/update query with a context and returns sql.ErrNoRows if no rows were affected.
+func execDeleteContext(ctx context.Context, x DBTX, query string, args ...interface{}) error {
+	res, err := x.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	return rowsAffected(res, err)
+}
+
+func rowsAffected(res sql.Result, err error) error {
 	if err != nil {
 		return err
 	}

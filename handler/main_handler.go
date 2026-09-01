@@ -48,7 +48,7 @@ func NewMainHandler(c *Config) {
 	r.POST("/api/auth/signin", h.SignIn)
 	r.POST("/api/auth/signup", h.SignUp)
 
-	sec := r.Group("/").Use(m.AuthUser(c.IDTokenService))
+	sec := r.Group("/").Use(m.AuthUser(c.IDTokenService), m.TraceUser())
 	sec.PUT("/api/auth/refresh", h.RefreshIDToken)
 	sec.PUT("/api/auth/password", h.SetPassword)
 	sec.POST("/api/auth/signout", h.SignOut)

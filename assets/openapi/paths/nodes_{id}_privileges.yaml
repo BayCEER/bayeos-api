@@ -25,7 +25,7 @@ get:
       $ref: ../components/GenericError.yaml#/GenericError
 post:
   summary: Create a new node privilege
-  description: "node_id is taken from the path and overrides any value in the body."
+  description: "node_id is taken from the path and overrides any value in the body; grantor_id is taken from the authenticated user."
   tags:
     - Nodes
   security:
