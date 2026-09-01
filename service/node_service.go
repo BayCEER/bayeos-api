@@ -19,7 +19,8 @@ type NodeService interface {
 	UpdateNode(ctx context.Context, id int32, fields *map[string]interface{}) error
 	DeleteNode(ctx context.Context, id int32) error
 	FindNodeByToken(ctx context.Context, token uuid.UUID) (model.Node, error)
-	FindNodesByPath(ctx context.Context, query string, skip int, limit int, userID int32) (int32, []model.Node, error)
+	FindNodesByPath(ctx context.Context, query string, kind string, skip int, limit int, userID int32) (int32, []model.Node, error)
+	FindNodesByAntPath(ctx context.Context, pattern string, kind string, skip int, limit int, userID int32) (int32, []model.Node, error)
 
 	GetNodeTokens(ctx context.Context, id int32) ([]model.NodeToken, error)
 	GetNodePrivs(ctx context.Context, id int32) ([]model.NodePrivilege, error)
@@ -116,10 +117,10 @@ func (s *nodeService) GetNodePrivs(ctx context.Context, id int32) ([]model.NodeP
 	return privs, nil
 }
 
-func (s *nodeService) FindNodesByPath(ctx context.Context, query string, skip int, limit int, userID int32) (int32, []model.Node, error) {
+func (s *nodeService) FindNodesByPath(ctx context.Context, query string, kind string, skip int, limit int, userID int32) (int32, []model.Node, error) {
 	nodes := []model.Node{}
 
-	hits, err := s.sqlRepo.FindNodesByPath(ctx, query)
+	hits, err := s.sqlRepo.FindNodesByPath(ctx, query, kind)
 	if err != nil {
 		return 0, hits, errors.New("failed to find nodes")
 	}
@@ -133,6 +134,35 @@ func (s *nodeService) FindNodesByPath(ctx context.Context, query string, skip in
 				total = total + 1
 				// Skip and limit
 				if (skip <= i) && (i < skip+limit) {
+					nodes = append(nodes, hit)
+				}
+			}
+		}
+	}
+	return total, nodes, nil
+}
+
+func (s *nodeService) FindNodesByAntPath(ctx context.Context, pattern string, kind string, skip int, limit int, userID int32) (int32, []model.Node, error) {
+	regex, err := antToRegex(pattern)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	hits, err := s.sqlRepo.FindNodesByAntPath(ctx, regex, kind)
+	if err != nil {
+		return 0, nil, errors.New("failed to find nodes")
+	}
+
+	nodes := []model.Node{}
+	var total int32
+	for i, hit := range hits {
+		if p, err := s.sqlRepo.GetNodePermission(ctx, hit.ID, userID); err != nil {
+			return 0, nil, errors.New("failed to get node permission")
+		} else {
+			if model.Readable(p) {
+				hit.Permission = p
+				total++
+				if skip <= i && i < skip+limit {
 					nodes = append(nodes, hit)
 				}
 			}

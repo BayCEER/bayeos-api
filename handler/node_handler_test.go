@@ -153,7 +153,7 @@ func TestSearchNodes(t *testing.T) {
 
 	// CREATE 3 nodes to search for
 	for i := 0; i < 3; i++ {
-		node := model.Node{DisplayName: fmt.Sprintf("SearchTarget-%d", i), ParentID: user.HomeNodeID}
+		node := model.Node{DisplayName: fmt.Sprintf("SearchTarget-%d", i), Kind: "Folder", ParentID: user.HomeNodeID}
 		req, err := NewJWTRequest("POST", "/api/nodes", node, token)
 		require.NoError(t, err)
 		w := httptest.NewRecorder()
@@ -185,6 +185,74 @@ func TestSearchNodes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int32(3), searchResult.Total)
 	require.Equal(t, 2, len(searchResult.Hits))
+}
+
+func TestSearchNodesByAntPath(t *testing.T) {
+	token, err := SignUp("antuser", "antpass")
+	require.NoError(t, err)
+	user, err := CurrentUser(token)
+	require.NoError(t, err)
+
+	// CREATE 3 Folder nodes and 1 Timeseries node with a common name prefix
+	for i := 0; i < 3; i++ {
+		node := model.Node{DisplayName: fmt.Sprintf("AntTarget-%d", i), Kind: "Folder", ParentID: user.HomeNodeID}
+		req, err := NewJWTRequest("POST", "/api/nodes", node, token)
+		require.NoError(t, err)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusCreated, w.Code)
+	}
+
+	tsNode := model.Node{DisplayName: "AntTarget-99", Kind: "Timeseries", ParentID: user.HomeNodeID}
+	req, err := NewJWTRequest("POST", "/api/nodes", tsNode, token)
+	require.NoError(t, err)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	// Search by Ant pattern across all kinds (kind omitted -> all kinds matched)
+	req, err = NewJWTRequest("GET", "/api/nodes/search/path?pattern=**/AntTarget*", nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var searchResult model.NodeSearch
+	err = json.Unmarshal(w.Body.Bytes(), &searchResult)
+	require.NoError(t, err)
+	require.Equal(t, int32(4), searchResult.Total)
+	require.Equal(t, 4, len(searchResult.Hits))
+
+	// Filter by kind=Folder -> only the 3 Folder nodes
+	req, err = NewJWTRequest("GET", "/api/nodes/search/path?pattern=**/AntTarget*&kind=Folder", nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	err = json.Unmarshal(w.Body.Bytes(), &searchResult)
+	require.NoError(t, err)
+	require.Equal(t, int32(3), searchResult.Total)
+	require.Equal(t, 3, len(searchResult.Hits))
+
+	// Filter by kind=Timeseries -> only 1 node
+	req, err = NewJWTRequest("GET", "/api/nodes/search/path?pattern=**/AntTarget*&kind=Timeseries", nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	err = json.Unmarshal(w.Body.Bytes(), &searchResult)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), searchResult.Total)
+	require.Equal(t, 1, len(searchResult.Hits))
+
+	// Missing pattern is a bad request
+	req, err = NewJWTRequest("GET", "/api/nodes/search/path", nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestParentChildRelationship(t *testing.T) {

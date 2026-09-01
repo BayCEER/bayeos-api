@@ -1,0 +1,73 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+post:
+  tags:
+    - Timeseries
+  summary: Insert data points into a timeseries
+  security:
+    - JWTAuth: []
+  requestBody:
+    content:
+      application/json:
+        schema:
+          type: array
+          items:
+            $ref: ../schema/TimeseriesDataPoint.yaml
+  responses:
+    "201":
+      description: created
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+get:
+  tags:
+    - Timeseries
+  summary: Query data points of a timeseries
+  security:
+    - JWTAuth: []
+  parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Inclusive lower time bound
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Inclusive upper time bound
+    - name: agg
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [1h, 1d, 1M, 1y]
+      description: Rollup granularity; when set returns the mean per bucket
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+      description: Maximum number of data points to return; the most recent points are returned
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: ../schema/TimeseriesDataPoint.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

@@ -14,12 +14,15 @@ import (
 
 	"github.com/BayCEER/bayeos/bayeos-api/handler"
 	log "github.com/BayCEER/bayeos/bayeos-api/logger"
+	"github.com/BayCEER/bayeos/bayeos-api/plugin"
+	_ "github.com/BayCEER/bayeos/bayeos-api/plugin/timeseries"
 	"github.com/BayCEER/bayeos/bayeos-api/repository"
 	"github.com/BayCEER/bayeos/bayeos-api/service"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -161,6 +164,9 @@ func main() {
 		NodePrivService:  nodePrivService,
 		NodeTokenService: nodeTokenService,
 		IDTokenService:   idTokenService,
+		Tracer:           otel.Tracer(serviceName),
+		Quest:            qdb,
+		Plugins:          plugins(),
 		// SeriesService:    seriesService,
 	})
 
@@ -232,8 +238,7 @@ func migrateQuestDB(qdb *pgx.Conn, migrationPath string) error {
 	return nil
 }
 
-func migratePg(db *sql.DB, migrationPath string) error {
-	driver, err := postgres.WithInstance(db, &postgres.Config{})
+func migratePg(db *sql.DB, migrationPath string) error {	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		return err
 	}
@@ -253,6 +258,10 @@ func migratePg(db *sql.DB, migrationPath string) error {
 	}
 	log.Info("postgres database migrated")
 	return nil
+}
+
+func plugins() []plugin.Plugin {
+	return plugin.All()
 }
 
 func mustGetEnv(key string) string {

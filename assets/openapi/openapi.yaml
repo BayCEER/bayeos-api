@@ -59,6 +59,8 @@ paths:
     $ref: paths/nodes.yaml
   /nodes/search:
     $ref: paths/nodes_search.yaml
+  /nodes/search/path:
+    $ref: paths/nodes_search_path.yaml
   /nodes/{id}/children:
     $ref: paths/nodes_{id}_children.yaml
   /nodes/{id}/parents:
@@ -73,3 +75,10 @@ paths:
     $ref: paths/nodes_{id}_privileges.yaml
   /nodes/{id}/privileges/{pid}:
     $ref: paths/nodes_{id}_privileges_{pid}.yaml
+
+  /timeseries:
+    $ref: paths/timeseries.yaml
+  /timeseries/{id}/data:
+    $ref: paths/timeseries_{id}_data.yaml
+  /timeseries/{id}:
+    $ref: paths/timeseries_{id}.yaml

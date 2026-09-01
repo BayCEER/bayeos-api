@@ -1,0 +1,16 @@
+type: object
+properties:
+  ts:
+    type: string
+    format: date-time
+    description: Timestamp of the data point
+  value:
+    type: number
+    format: float
+    description: Measurement value
+required:
+  - ts
+  - value
+example:
+  ts: '2026-08-31T12:34:56.789Z'
+  value: 23.5

@@ -1,0 +1,11 @@
+type: object
+properties:
+  display_name:
+    type: string
+    pattern: '^\w+$'
+  parent_id:
+    type: integer
+    format: int32
+example:
+  display_name: Sensor1
+  parent_id: 10

@@ -98,6 +98,7 @@ func (h *Handler) GetNodeParents(c *gin.Context) {
 func (h *Handler) SearchNodes(c *gin.Context) {
 
 	query := c.DefaultQuery("query", "")
+	kind := c.DefaultQuery("kind", "")
 	skip, err := strconv.Atoi(c.DefaultQuery("skip", "0"))
 	if err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid skip parameter")
@@ -113,12 +114,41 @@ func (h *Handler) SearchNodes(c *gin.Context) {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
 		return
 	}
-	if total, nodes, err := h.NodeService.FindNodesByPath(c.Request.Context(), query, skip, limit, userID); err != nil {
+	if total, nodes, err := h.NodeService.FindNodesByPath(c.Request.Context(), query, kind, skip, limit, userID); err != nil {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Search failed: %v", err))
 	} else {
 		c.JSON(http.StatusOK, gin.H{"total": total, "hits": nodes})
 	}
 
+}
+
+func (h *Handler) SearchNodesByPath(c *gin.Context) {
+	pattern := c.DefaultQuery("pattern", "")
+	if pattern == "" {
+		mw.AbortWithBadRequestError(c, "Invalid pattern parameter")
+		return
+	}
+	kind := c.DefaultQuery("kind", "")
+	skip, err := strconv.Atoi(c.DefaultQuery("skip", "0"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid skip parameter")
+		return
+	}
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid limit parameter")
+		return
+	}
+	err, userID := h.getUserID(c)
+	if err != nil {
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
+		return
+	}
+	if total, nodes, err := h.NodeService.FindNodesByAntPath(c.Request.Context(), pattern, kind, skip, limit, userID); err != nil {
+		mw.AbortWithInternalError(c, fmt.Sprintf("Search failed: %v", err))
+	} else {
+		c.JSON(http.StatusOK, gin.H{"total": total, "hits": nodes})
+	}
 }
 
 func (h *Handler) CreateNode(c *gin.Context) {
@@ -153,6 +183,8 @@ func (h *Handler) DeleteNode(c *gin.Context) {
 			mw.AbortWithInternalError(c, fmt.Sprintf("Failed to delete node: %v", err))
 			return
 		}
+		// Notify plugins (e.g. QuestDB cleanup) after the node is gone.
+		h.runNodeDeleteHooks(c.Request.Context(), id)
 		c.JSON(http.StatusOK, gin.H{"message": "Node deleted"})
 	}
 }

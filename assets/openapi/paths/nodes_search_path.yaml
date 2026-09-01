@@ -1,0 +1,50 @@
+get:
+  tags:
+    - Nodes
+  summary: Search for nodes by Ant-style path pattern
+  description: |
+    Search nodes by matching their node path against an Ant-style pattern.
+    Wildcards: `?` matches one character, `*` matches zero or more characters
+    within a path segment, `**` matches zero or more path segments.
+    Optionally filter by kind (omit `kind` to match all kinds).
+  security:
+    - JWTAuth: []
+  parameters:
+    - name: pattern
+      in: query
+      required: true
+      schema:
+        type: string
+      description: 'Ant-style path pattern (e.g. `/BayEOS/**/Sensor*`)'
+    - name: kind
+      in: query
+      required: false
+      schema:
+        type: string
+      description: "Filter by node kind (optional; empty matches all kinds)"
+    - name: skip
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+      description: "Number of rows to skip for paging (default: 0)"
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+      description: "Maximum number of rows to return (default: 10)"
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/NodeSearch.yaml
+    "400":
+      description: bad request (missing/invalid pattern)
+      $ref: ../components/GenericError.yaml#/GenericError
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

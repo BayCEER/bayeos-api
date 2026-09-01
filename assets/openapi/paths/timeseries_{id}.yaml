@@ -1,0 +1,56 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+get:
+  tags:
+    - Timeseries
+  summary: Get a timeseries by id
+  security:
+    - JWTAuth: []
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/Node.yaml
+    "404":
+      description: not found or not a timeseries
+      $ref: ../components/GenericError.yaml#/GenericError
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+patch:
+  tags:
+    - Timeseries
+  summary: Update a timeseries by id
+  description: Partial update, only send the fields to change.
+  security:
+    - JWTAuth: []
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/Node.yaml
+  responses:
+    "200":
+      description: updated
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+delete:
+  tags:
+    - Timeseries
+  summary: Delete a timeseries by id
+  description: Removes the node and its QuestDB data.
+  security:
+    - JWTAuth: []
+  responses:
+    "200":
+      description: deleted
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

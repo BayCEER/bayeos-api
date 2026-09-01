@@ -1,0 +1,21 @@
+post:
+  tags:
+    - Timeseries
+  summary: Create a new timeseries
+  description: Creates a timeseries node. Requires WRITE permission on the parent node.
+  security:
+    - JWTAuth: []
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/TimeseriesCreate.yaml
+  responses:
+    "201":
+      description: created
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/Node.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

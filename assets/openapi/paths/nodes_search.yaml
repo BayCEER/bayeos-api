@@ -11,6 +11,12 @@ get:
       schema:
         type: string
       description: 'Query string (default: "")'
+    - name: kind
+      in: query
+      required: false
+      schema:
+        type: string
+      description: "Filter by node kind (optional; empty matches all kinds)"
     - name: skip
       in: query
       required: false

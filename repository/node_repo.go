@@ -97,11 +97,37 @@ func (r *SqlRepo) DeleteNodeByID(ctx context.Context, ID int32) error {
 	return err
 }
 
-func (r *SqlRepo) FindNodesByPath(ctx context.Context, query string) ([]model.Node, error) {
+func (r *SqlRepo) FindNodesByPath(ctx context.Context, query string, kind string) ([]model.Node, error) {
 	n := []model.Node{}
-	stmt := `SELECT id, display_name, kind, parent_id, (path).path as node_path, created_at FROM node WHERE (path).path like $1 and parent_id is not null order by (path).path`
-	c, span := withQuerySpan(ctx, stmt)
-	err := r.trans.SelectContext(c, &n, stmt, fmt.Sprintf("%%%v%%", query))
+	var stmt string
+	c, span := withQuerySpan(ctx, "FindNodesByPath")
+	var err error
+	if kind == "" {
+		stmt = `SELECT id, display_name, kind, parent_id, (path).path as node_path, created_at FROM node WHERE (path).path like $1 and parent_id is not null order by (path).path`
+		err = r.trans.SelectContext(c, &n, stmt, fmt.Sprintf("%%%v%%", query))
+	} else {
+		stmt = `SELECT id, display_name, kind, parent_id, (path).path as node_path, created_at FROM node WHERE (path).path like $1 and kind = $2 and parent_id is not null order by (path).path`
+		err = r.trans.SelectContext(c, &n, stmt, fmt.Sprintf("%%%v%%", query), kind)
+	}
+	endQuerySpan(span, err)
+	if err != nil {
+		return n, err
+	}
+	return n, nil
+}
+
+func (r *SqlRepo) FindNodesByAntPath(ctx context.Context, regex string, kind string) ([]model.Node, error) {
+	n := []model.Node{}
+	var stmt string
+	var err error
+	c, span := withQuerySpan(ctx, "FindNodesByAntPath")
+	if kind == "" {
+		stmt = `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, created_at FROM node WHERE (path).path ~ $1 AND parent_id IS NOT NULL ORDER BY (path).path`
+		err = r.trans.SelectContext(c, &n, stmt, regex)
+	} else {
+		stmt = `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, created_at FROM node WHERE (path).path ~ $1 AND kind = $2 AND parent_id IS NOT NULL ORDER BY (path).path`
+		err = r.trans.SelectContext(c, &n, stmt, regex, kind)
+	}
 	endQuerySpan(span, err)
 	if err != nil {
 		return n, err
