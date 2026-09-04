@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,8 +21,8 @@ func (h *Handler) GetNode(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	} else {
-		if err, userID := h.getUserID(c); err != nil {
-			mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
+		if userID, exists := mw.AuthUserIDFromContext(c); !exists {
+			mw.AbortWithInternalError(c, "user id not found")
 			return
 		} else {
 			if n, err := h.NodeService.GetNode(c.Request.Context(), int32(id), userID); err != nil {
@@ -35,17 +36,17 @@ func (h *Handler) GetNode(c *gin.Context) {
 }
 
 func (h *Handler) GetNodes(c *gin.Context) {
-	var query model.IdFormQuery
-	if err := c.ShouldBindQuery(&query); err != nil {
-		mw.AbortWithBadRequestError(c, "Invalid query parameters")
+	ids, err := strings.ParseCSVToInt32(c.Query("ids"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid ids parameter")
 		return
 	}
 
-	if err, userID := h.getUserID(c); err != nil {
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
+	if userID, exists := mw.AuthUserIDFromContext(c); !exists {
+		mw.AbortWithInternalError(c, "user id not found")
 		return
 	} else {
-		if nodes, err := h.NodeService.GetNodes(c.Request.Context(), query.IDs, userID); err != nil {
+		if nodes, err := h.NodeService.GetNodes(c.Request.Context(), ids, userID); err != nil {
 			mw.AbortWithInternalError(c, "Nodes not found")
 			return
 		} else {
@@ -63,8 +64,8 @@ func (h *Handler) GetNodeChildren(c *gin.Context) {
 		return
 	}
 
-	if err, userID := h.getUserID(c); err != nil {
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
+	if userID, exists := mw.AuthUserIDFromContext(c); !exists {
+		mw.AbortWithInternalError(c, "user id not found")
 		return
 	} else {
 		if n, err := h.NodeService.GetNodeChildren(c.Request.Context(), int32(id), userID); err != nil {
@@ -83,8 +84,8 @@ func (h *Handler) GetNodeParents(c *gin.Context) {
 		return
 	}
 
-	if err, userID := h.getUserID(c); err != nil {
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
+	if userID, exists := mw.AuthUserIDFromContext(c); !exists {
+		mw.AbortWithInternalError(c, "user id not found")
 		return
 	} else {
 		if n, err := h.NodeService.GetNodeParents(c.Request.Context(), int32(id), userID); err != nil {
@@ -96,33 +97,6 @@ func (h *Handler) GetNodeParents(c *gin.Context) {
 }
 
 func (h *Handler) SearchNodes(c *gin.Context) {
-
-	query := c.DefaultQuery("query", "")
-	kind := c.DefaultQuery("kind", "")
-	skip, err := strconv.Atoi(c.DefaultQuery("skip", "0"))
-	if err != nil {
-		mw.AbortWithBadRequestError(c, "Invalid skip parameter")
-		return
-	}
-	limit, err := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	if err != nil {
-		mw.AbortWithBadRequestError(c, "Invalid limit parameter")
-		return
-	}
-	err, userID := h.getUserID(c)
-	if err != nil {
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
-		return
-	}
-	if total, nodes, err := h.NodeService.FindNodesByPath(c.Request.Context(), query, kind, skip, limit, userID); err != nil {
-		mw.AbortWithInternalError(c, fmt.Sprintf("Search failed: %v", err))
-	} else {
-		c.JSON(http.StatusOK, gin.H{"total": total, "hits": nodes})
-	}
-
-}
-
-func (h *Handler) SearchNodesByPath(c *gin.Context) {
 	pattern := c.DefaultQuery("pattern", "")
 	if pattern == "" {
 		mw.AbortWithBadRequestError(c, "Invalid pattern parameter")
@@ -139,9 +113,9 @@ func (h *Handler) SearchNodesByPath(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid limit parameter")
 		return
 	}
-	err, userID := h.getUserID(c)
-	if err != nil {
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
+	userID, exists := mw.AuthUserIDFromContext(c)
+	if !exists {
+		mw.AbortWithInternalError(c, "user id not found")
 		return
 	}
 	if total, nodes, err := h.NodeService.FindNodesByAntPath(c.Request.Context(), pattern, kind, skip, limit, userID); err != nil {
@@ -152,39 +126,87 @@ func (h *Handler) SearchNodesByPath(c *gin.Context) {
 }
 
 func (h *Handler) CreateNode(c *gin.Context) {
-	d := model.Node{}
-	if err := c.BindJSON(&d); err != nil {
+	var body struct {
+		DisplayName string         `json:"display_name" binding:"required"`
+		Kind        string         `json:"kind"`
+		ParentID    *int32         `json:"parent_id"`
+		Path        *string        `json:"node_path"`
+		Metadata    map[string]any `json:"metadata"`
+	}
+	if err := c.BindJSON(&body); err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid request body")
 		return
 	}
 
-	err, userID := h.getUserID(c)
-	if err != nil {
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user id: %v", err))
+	userID, exists := mw.AuthUserIDFromContext(c)
+	if !exists {
+		mw.AbortWithInternalError(c, "user id not found")
 		return
 	}
 
-	if err := h.NodeService.CreateNode(c.Request.Context(), &d, userID); err != nil {
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to create node: %v", err))
-		return
+	d := model.Node{
+		DisplayName: body.DisplayName,
+		Kind:        body.Kind,
+	}
+	if body.Metadata != nil {
+		md, err := model.MetadataFromMap(body.Metadata)
+		if err != nil {
+			mw.AbortWithBadRequestError(c, "Invalid metadata")
+			return
+		}
+		d.Metadata = md
+	}
+
+	if body.Path != nil && *body.Path != "" {
+		// Path-based creation: middleware already resolved the base node
+		// and set NodeID. Strip the prefix to get the relative path.
+		baseID, _ := mw.NodeIDFromContext(c)
+		rel := *body.Path
+		if len(rel) > 0 && (rel[0] == '/' || rel[0] == '~') {
+			rel = rel[1:]
+		}
+		if err := h.NodeService.CreateNodeByPath(c.Request.Context(), &d, baseID, rel, userID); err != nil {
+			mw.AbortWithInternalError(c, fmt.Sprintf("Failed to create node: %v", err))
+			return
+		}
+	} else {
+		if body.ParentID == nil {
+			mw.AbortWithBadRequestError(c, "either path or parent_id is required")
+			return
+		}
+		d.ParentID = *body.ParentID
+		if err := h.NodeService.CreateNode(c.Request.Context(), &d, userID); err != nil {
+			mw.AbortWithInternalError(c, fmt.Sprintf("Failed to create node: %v", err))
+			return
+		}
 	}
 	c.JSON(http.StatusCreated, d)
-
 }
 
 func (h *Handler) DeleteNode(c *gin.Context) {
 	if id, err := strings.ParseStringToInt32(c.Param("id")); err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 	} else {
-		if err := h.NodeService.DeleteNode(c.Request.Context(), id); err != nil {
-			if mw.AbortWithNotFoundIfNoRows(c, err, "node", "id", c.Param("id")) {
-				return
-			}
-			mw.AbortWithInternalError(c, fmt.Sprintf("Failed to delete node: %v", err))
+		// Collect all node IDs that will be removed (the node itself plus
+		// every descendant) before any rows are deleted.
+		nodeIDs, err := h.NodeService.FindNodeDescendantsByID(c.Request.Context(), id)
+		if err != nil {
+			mw.AbortWithInternalError(c, fmt.Sprintf("Failed to find descendants: %v", err))
 			return
 		}
-		// Notify plugins (e.g. QuestDB cleanup) after the node is gone.
-		h.runNodeDeleteHooks(c.Request.Context(), id)
+		if len(nodeIDs) == 0 {
+			mw.AbortWithNotFoundIfNoRows(c, sql.ErrNoRows, "node", "id", c.Param("id"))
+			return
+		}
+
+		// Explicitly delete all collected nodes (does not rely on ON DELETE CASCADE).
+		if err := h.NodeService.DeleteNodesByIDs(c.Request.Context(), nodeIDs); err != nil {
+			mw.AbortWithInternalError(c, fmt.Sprintf("Failed to delete nodes: %v", err))
+			return
+		}
+
+		// Notify plugins (e.g. QuestDB cleanup) with the full set of deleted IDs.
+		h.runNodeDeleteHooks(c.Request.Context(), nodeIDs)
 		c.JSON(http.StatusOK, gin.H{"message": "Node deleted"})
 	}
 }
@@ -220,13 +242,4 @@ func (h *Handler) UpdateNode(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "Node updated"})
 	}
-}
-
-func (h *Handler) getUserID(c *gin.Context) (error, int32) {
-	user, exists := c.Get("User")
-	if !exists {
-		return fmt.Errorf("user not found in context"), 0
-	}
-	u := user.(model.User)
-	return nil, u.ID
 }

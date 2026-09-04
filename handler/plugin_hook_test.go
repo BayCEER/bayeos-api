@@ -9,24 +9,24 @@ import (
 )
 
 func TestRunNodeDeleteHooks(t *testing.T) {
-	var got []int32
+	var got [][]int32
 	h := &Handler{}
 	h.nodeDeleteHooks = []plugin.NodeDeleteHookFunc{
-		func(ctx context.Context, nodeID int32) error {
-			got = append(got, nodeID)
+		func(ctx context.Context, nodeIDs []int32) error {
+			got = append(got, nodeIDs)
 			return nil
 		},
-		func(ctx context.Context, nodeID int32) error {
-			got = append(got, nodeID) // second hook also runs, order preserved
+		func(ctx context.Context, nodeIDs []int32) error {
+			got = append(got, nodeIDs) // second hook also runs, order preserved
 			return nil
 		},
 	}
 
-	h.runNodeDeleteHooks(context.Background(), 13)
-	require.Equal(t, []int32{13, 13}, got)
+	h.runNodeDeleteHooks(context.Background(), []int32{10, 11, 12})
+	require.Equal(t, [][]int32{{10, 11, 12}, {10, 11, 12}}, got)
 }
 
 func TestRunNodeDeleteHooksEmpty(t *testing.T) {
 	h := &Handler{}
-	h.runNodeDeleteHooks(context.Background(), 13) // must not panic
+	h.runNodeDeleteHooks(context.Background(), []int32{13}) // must not panic
 }

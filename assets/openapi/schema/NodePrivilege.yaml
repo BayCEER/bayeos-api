@@ -7,23 +7,19 @@ properties:
   id:
     readOnly: true
     type: integer
-    format: int32          
+    format: int32
   node_id:
     readOnly: true
     type: integer
     format: int32
   grantee_id:
     type: integer
-    format: int32   
+    format: int32
   grantor_id:
     readOnly: true
     type: integer
-    format: int32   
-  permission:    
-    type: integer 
+    format: int32
+  permission:
+    type: integer
     minimum: 1
     maximum: 7
-   
-   
-
-  

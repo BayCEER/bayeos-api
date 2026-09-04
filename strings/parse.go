@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 func ParseStringToInt32(s string) (int32, error) {
@@ -18,10 +19,17 @@ func ParseStringToInt32(s string) (int32, error) {
 	return int32(value), nil
 }
 
-func ParseSliceToInt32(stringIDs []string) ([]int32, error) {
+func ParseCSVToInt32(csv string) ([]int32, error) {
 
-	int32IDs := make([]int32, 0, len(stringIDs))
-	for _, idStr := range stringIDs {
+	var int32IDs []int32
+	if csv == "" {
+		return int32IDs, nil
+	}
+	for _, idStr := range strings.Split(csv, ",") {
+		idStr = strings.TrimSpace(idStr)
+		if idStr == "" {
+			continue
+		}
 		idInt64, err := strconv.ParseInt(idStr, 10, 32)
 
 		if err != nil {

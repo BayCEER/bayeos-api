@@ -48,13 +48,17 @@ func TestRegistryRejectsUnnamed(t *testing.T) {
 
 func TestHostNodeDeleteHook(t *testing.T) {
 	h := &Host{}
-	var got []int32
-	h.AddNodeDeleteHook(func(ctx context.Context, nodeID int32) error {
-		got = append(got, nodeID)
+	var got [][]int32
+	h.AddNodeDeleteHook(func(ctx context.Context, nodeIDs []int32) error {
+		got = append(got, nodeIDs)
 		return nil
 	})
-	h.AddNodeDeleteHook(func(ctx context.Context, nodeID int32) error {
-		got = append(got, nodeID+100)
+	h.AddNodeDeleteHook(func(ctx context.Context, nodeIDs []int32) error {
+		shifted := make([]int32, len(nodeIDs))
+		for i, id := range nodeIDs {
+			shifted[i] = id + 100
+		}
+		got = append(got, shifted)
 		return nil
 	})
 
@@ -62,8 +66,8 @@ func TestHostNodeDeleteHook(t *testing.T) {
 	require.Len(t, hooks, 2)
 
 	for _, fn := range hooks {
-		require.NoError(t, fn(context.Background(), 7))
+		require.NoError(t, fn(context.Background(), []int32{7, 8}))
 	}
 
-	require.Equal(t, []int32{7, 107}, got)
+	require.Equal(t, [][]int32{{7, 8}, {107, 108}}, got)
 }

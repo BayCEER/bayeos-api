@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	mw "github.com/BayCEER/bayeos/bayeos-api/middleware"
-	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/BayCEER/bayeos/bayeos-api/strings"
 	"github.com/gin-gonic/gin"
 )
@@ -21,26 +20,19 @@ func NewHandlers(s TimeseriesService) *Handlers {
 	return &Handlers{service: s}
 }
 
-func (h *Handlers) userId(c *gin.Context) (int32, bool) {
-	u, exists := c.Get("User")
-	if !exists {
-		return 0, false
-	}
-	return u.(model.User).ID, true
-}
-
 func (h *Handlers) Create(c *gin.Context) {
-	userID, ok := h.userId(c)
+	userID, ok := mw.AuthUserIDFromContext(c)
 	if !ok {
-		mw.AbortWithUnauthorizedError(c, "User not found in context")
+		mw.AbortWithInternalError(c, "user id not found")
 		return
 	}
-	var cre model.Node
+	baseID, _ := mw.NodeIDFromContext(c)
+	var cre TimeseriesCreate
 	if err := c.ShouldBindJSON(&cre); err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid request body")
 		return
 	}
-	n, err := h.service.Create(c.Request.Context(), TimeseriesCreate{DisplayName: cre.DisplayName, ParentID: cre.ParentID}, userID)
+	n, err := h.service.Create(c.Request.Context(), cre, baseID, userID)
 	if err != nil {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to create timeseries: %v", err))
 		return
@@ -54,9 +46,9 @@ func (h *Handlers) Get(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	userID, ok := h.userId(c)
+	userID, ok := mw.AuthUserIDFromContext(c)
 	if !ok {
-		mw.AbortWithUnauthorizedError(c, "User not found in context")
+		mw.AbortWithInternalError(c, "user id not found")
 		return
 	}
 	n, err := h.service.Get(c.Request.Context(), id, userID)
@@ -77,9 +69,9 @@ func (h *Handlers) Update(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	userID, ok := h.userId(c)
+	userID, ok := mw.AuthUserIDFromContext(c)
 	if !ok {
-		mw.AbortWithUnauthorizedError(c, "User not found in context")
+		mw.AbortWithInternalError(c, "user id not found")
 		return
 	}
 	var fields map[string]interface{}
@@ -104,9 +96,9 @@ func (h *Handlers) Delete(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	userID, ok := h.userId(c)
+	userID, ok := mw.AuthUserIDFromContext(c)
 	if !ok {
-		mw.AbortWithUnauthorizedError(c, "User not found in context")
+		mw.AbortWithInternalError(c, "user id not found")
 		return
 	}
 	if err := h.service.Delete(c.Request.Context(), id, userID); err != nil {
@@ -126,9 +118,9 @@ func (h *Handlers) AddData(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	userID, ok := h.userId(c)
+	userID, ok := mw.AuthUserIDFromContext(c)
 	if !ok {
-		mw.AbortWithUnauthorizedError(c, "User not found in context")
+		mw.AbortWithInternalError(c, "user id not found")
 		return
 	}
 	var pts []DataPoint
@@ -153,9 +145,9 @@ func (h *Handlers) QueryData(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	userID, ok := h.userId(c)
+	userID, ok := mw.AuthUserIDFromContext(c)
 	if !ok {
-		mw.AbortWithUnauthorizedError(c, "User not found in context")
+		mw.AbortWithInternalError(c, "user id not found")
 		return
 	}
 	var q TimeseriesQuery
@@ -163,7 +155,7 @@ func (h *Handlers) QueryData(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid query parameters")
 		return
 	}
-	pts, err := h.service.QueryData(c.Request.Context(), id, q, userID)
+	data, err := h.service.QueryData(c.Request.Context(), id, q, userID)
 	if err != nil {
 		if errors.Is(err, ErrNotTimeseries) {
 			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
@@ -172,5 +164,62 @@ func (h *Handlers) QueryData(c *gin.Context) {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to query data: %v", err))
 		return
 	}
-	c.JSON(http.StatusOK, pts)
+	c.JSON(http.StatusOK, data)
+}
+
+func (h *Handlers) QueryDataBatch(c *gin.Context) {
+	userID, ok := mw.AuthUserIDFromContext(c)
+	if !ok {
+		mw.AbortWithInternalError(c, "user id not found")
+		return
+	}
+	var q TimeseriesDataQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid query parameters")
+		return
+	}
+	ids, err := strings.ParseCSVToInt32(c.Query("ids"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid ids parameter")
+		return
+	}
+	q.IDs = ids
+	if len(q.IDs) == 0 {
+		mw.AbortWithBadRequestError(c, "at least one ids value is required")
+		return
+	}
+	data, err := h.service.QueryDataBatch(c.Request.Context(), q, userID)
+	if err != nil {
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to query data: %v", err))
+		return
+	}
+	c.JSON(http.StatusOK, data)
+}
+
+func (h *Handlers) GetStats(c *gin.Context) {
+	id, err := strings.ParseStringToInt32(c.Param("id"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid id parameter")
+		return
+	}
+	userID, ok := mw.AuthUserIDFromContext(c)
+	if !ok {
+		mw.AbortWithInternalError(c, "user id not found")
+		return
+	}
+	var q TimeseriesStatsQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid query parameters")
+		return
+	}
+	stats, err := h.service.GetStats(c.Request.Context(), id, q, userID)
+	if err != nil {
+		if errors.Is(err, ErrNotTimeseries) {
+			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
+			return
+		}
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to compute stats: %v", err))
+		return
+	}
+	c.JSON(http.StatusOK, stats)
 }

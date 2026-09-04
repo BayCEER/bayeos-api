@@ -17,7 +17,7 @@ func (r *SqlRepo) FindNodePrivByID(ctx context.Context, ID int32) (model.NodePri
 
 func (r *SqlRepo) FindNodePrivsByGranteeID(ctx context.Context, ID int32) ([]model.NodePrivilege, error) {
 	p := []model.NodePrivilege{}
-	stmt := `SELECT p.* FROM node_privilege p join users u on u.id = p.grantor_id WHERE p.grantee_id=$1 and p.grantee_id != p.grantor_id order by u.display_name asc`
+	stmt := `SELECT * FROM node_privilege WHERE grantee_id=$1`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.SelectContext(c, &p, stmt, ID)
 	endQuerySpan(span, err)
@@ -27,9 +27,9 @@ func (r *SqlRepo) FindNodePrivsByGranteeID(ctx context.Context, ID int32) ([]mod
 	return p, nil
 }
 
-func (r *SqlRepo) FindNodePrivsByGrantorID(ctx context.Context, ID int32) ([]model.NodePrivilege, error) {
+func (r *SqlRepo) FindNodePrivsByUserID(ctx context.Context, ID int32) ([]model.NodePrivilege, error) {
 	p := []model.NodePrivilege{}
-	stmt := `SELECT p.* FROM node_privilege p join users u on u.id = p.grantee_id WHERE p.grantor_id=$1 and p.grantee_id != p.grantor_id order by u.display_name asc`
+	stmt := `SELECT * FROM node_privilege WHERE grantee_id=$1 OR grantor_id=$1 ORDER BY node_id`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.SelectContext(c, &p, stmt, ID)
 	endQuerySpan(span, err)
@@ -76,26 +76,4 @@ func (r *SqlRepo) DeleteNodePrivByID(ctx context.Context, ID int32) error {
 	return err
 }
 
-func (r *SqlRepo) FindNodePrivByGrantorID(ctx context.Context, ID int32) ([]model.NodePrivilege, error) {
-	u := []model.NodePrivilege{}
-	stmt := `SELECT id, node_id, grantee_id, permission, grantor_id from node_privilege where grantor_id = $1 order by grantee_id`
-	c, span := withQuerySpan(ctx, stmt)
-	err := r.trans.SelectContext(c, &u, stmt, ID)
-	endQuerySpan(span, err)
-	if err != nil {
-		return nil, err
-	}
-	return u, nil
-}
 
-func (r *SqlRepo) FindNodePrivByGranteeID(ctx context.Context, ID int32) ([]model.NodePrivilege, error) {
-	u := []model.NodePrivilege{}
-	stmt := `SELECT id, node_id, grantee_id, permission, grantor_id from node_privilege where grantee_id = $1 order by grantor_id`
-	c, span := withQuerySpan(ctx, stmt)
-	err := r.trans.SelectContext(c, &u, stmt, ID)
-	endQuerySpan(span, err)
-	if err != nil {
-		return nil, err
-	}
-	return u, nil
-}

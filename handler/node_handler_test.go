@@ -146,48 +146,6 @@ func TestGetRootNode(t *testing.T) {
 }
 
 func TestSearchNodes(t *testing.T) {
-	token, err := SignUp("testuser", "elbarto1")
-	require.NoError(t, err)
-	user, err := CurrentUser(token)
-	require.NoError(t, err)
-
-	// CREATE 3 nodes to search for
-	for i := 0; i < 3; i++ {
-		node := model.Node{DisplayName: fmt.Sprintf("SearchTarget-%d", i), Kind: "Folder", ParentID: user.HomeNodeID}
-		req, err := NewJWTRequest("POST", "/api/nodes", node, token)
-		require.NoError(t, err)
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-		require.Equal(t, http.StatusCreated, w.Code)
-	}
-
-	// SEARCH nodes under root
-	req, err := NewJWTRequest("GET", "/api/nodes/search?query=SearchTarget", nil, token)
-	require.NoError(t, err)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	require.Equal(t, http.StatusOK, w.Code)
-
-	var searchResult model.NodeSearch
-	err = json.Unmarshal(w.Body.Bytes(), &searchResult)
-	require.NoError(t, err)
-	require.Equal(t, int32(3), searchResult.Total)
-	require.Equal(t, 3, len(searchResult.Hits))
-
-	// Pagination limits the returned hits but not the total
-	req, err = NewJWTRequest("GET", "/api/nodes/search?query=SearchTarget&limit=2", nil, token)
-	require.NoError(t, err)
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	require.Equal(t, http.StatusOK, w.Code)
-
-	err = json.Unmarshal(w.Body.Bytes(), &searchResult)
-	require.NoError(t, err)
-	require.Equal(t, int32(3), searchResult.Total)
-	require.Equal(t, 2, len(searchResult.Hits))
-}
-
-func TestSearchNodesByAntPath(t *testing.T) {
 	token, err := SignUp("antuser", "antpass")
 	require.NoError(t, err)
 	user, err := CurrentUser(token)
@@ -211,7 +169,7 @@ func TestSearchNodesByAntPath(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	// Search by Ant pattern across all kinds (kind omitted -> all kinds matched)
-	req, err = NewJWTRequest("GET", "/api/nodes/search/path?pattern=**/AntTarget*", nil, token)
+	req, err = NewJWTRequest("GET", "/api/nodes/search?pattern=**/AntTarget*", nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -224,7 +182,7 @@ func TestSearchNodesByAntPath(t *testing.T) {
 	require.Equal(t, 4, len(searchResult.Hits))
 
 	// Filter by kind=Folder -> only the 3 Folder nodes
-	req, err = NewJWTRequest("GET", "/api/nodes/search/path?pattern=**/AntTarget*&kind=Folder", nil, token)
+	req, err = NewJWTRequest("GET", "/api/nodes/search?pattern=**/AntTarget*&kind=Folder", nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -236,7 +194,7 @@ func TestSearchNodesByAntPath(t *testing.T) {
 	require.Equal(t, 3, len(searchResult.Hits))
 
 	// Filter by kind=Timeseries -> only 1 node
-	req, err = NewJWTRequest("GET", "/api/nodes/search/path?pattern=**/AntTarget*&kind=Timeseries", nil, token)
+	req, err = NewJWTRequest("GET", "/api/nodes/search?pattern=**/AntTarget*&kind=Timeseries", nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -248,7 +206,7 @@ func TestSearchNodesByAntPath(t *testing.T) {
 	require.Equal(t, 1, len(searchResult.Hits))
 
 	// Missing pattern is a bad request
-	req, err = NewJWTRequest("GET", "/api/nodes/search/path", nil, token)
+	req, err = NewJWTRequest("GET", "/api/nodes/search", nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)

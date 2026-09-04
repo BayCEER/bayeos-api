@@ -6,17 +6,17 @@ get:
   security:
     - JWTAuth: []
   parameters:
-    - name: id
+    - name: ids
       in: query
       required: false
       style: form
-      explode: true
+      explode: false
       schema:
         type: array
         items:
           type: integer
           format: int32
-      description: Optional list of user ids to filter by; repeat the parameter for each id (e.g. `id=1&id=2`)
+      description: Optional comma-separated list of user ids to filter by (e.g. `ids=1,2,3`)
 
   responses:
     "200":

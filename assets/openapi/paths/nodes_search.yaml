@@ -1,22 +1,38 @@
 get:
   tags:
     - Nodes
-  summary: Search for nodes by name
+  summary: Search for nodes
+  description: |
+    Search nodes by matching their full path against an Ant-style glob pattern.
+
+    **Wildcards:**
+
+    | Pattern | Matches |
+    |---------|---------|
+    | `?` | Exactly one character (except `/`) |
+    | `*` | Zero or more characters within a single path segment (except `/`) |
+    | `**` | Zero or more full path segments (including `/`) |
+
+    Special regex characters (`.`, `+`, `^`, `$`, `{`, `}`, `[`, `]`, `(`, `)`, `|`) are escaped automatically.
+
+    Results are ordered by path and filtered to nodes readable by the authenticated user.
+
+    Optionally filter by `kind` (omit to match all kinds).
   security:
     - JWTAuth: []
   parameters:
-    - name: query
+    - name: pattern
       in: query
-      required: false
+      required: true
       schema:
         type: string
-      description: 'Query string (default: "")'
+      description: "Ant-style path pattern"
     - name: kind
       in: query
       required: false
       schema:
         type: string
-      description: "Filter by node kind (optional; empty matches all kinds)"
+      description: "Filter by node kind (optional; omit to match all kinds)"
     - name: skip
       in: query
       required: false
@@ -38,5 +54,55 @@ get:
         application/json:
           schema:
             $ref: ../schema/NodeSearch.yaml
+    "400":
+      description: bad request (missing/invalid pattern)
+      $ref: ../components/GenericError.yaml#/GenericError
     default:
       $ref: ../components/GenericError.yaml#/GenericError
+  examples:
+    exact:
+      summary: Exact path match
+      description: "Matches only the node at `/BayEOS/Home/Sensor1`"
+      value:
+        pattern: "/BayEOS/Home/Sensor1"
+    single_char:
+      summary: Single character wildcard (?)
+      description: "`?` matches exactly one character. Matches `Sensor1`, `Sensor2`, etc. but not `Sensor10`."
+      value:
+        pattern: "/BayEOS/Home/Sensor?"
+    segment_wildcard:
+      summary: Segment wildcard (*)
+      description: "`*` matches zero or more characters within one path segment (no `/`). Matches `Temperature_1`, `Temp`, etc."
+      value:
+        pattern: "/BayEOS/**/Temperature*"
+    multi_segment:
+      summary: Multi-segment wildcard (**)
+      description: "`**` matches zero or more full path segments. Matches any path containing a node named `Sensor*`."
+      value:
+        pattern: "/**/Sensor*"
+    multi_segment_start:
+      summary: Wildcard at the start
+      description: "Starts matching from any depth."
+      value:
+        pattern: "**/Sensor*"
+    all_nodes:
+      summary: All nodes under a path
+      description: "Matches every node under `/BayEOS/Home/`."
+      value:
+        pattern: "/BayEOS/Home/**"
+    everything:
+      summary: Match everything
+      description: "`**` alone matches all paths."
+      value:
+        pattern: "**"
+    escaped_dot:
+      summary: Literal dot in filename
+      description: "Special characters like `.` are escaped automatically. Matches `/BayEOS/Home/test.txt`."
+      value:
+        pattern: "/BayEOS/**/test.txt"
+    with_kind:
+      summary: Filter by node kind
+      description: "Combine pattern with kind to narrow results."
+      value:
+        pattern: "/**/Temperature*"
+        kind: "Timeseries"

@@ -3,9 +3,8 @@ package middleware
 import (
 	"strconv"
 
-	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel/semconv/v1.39.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -14,15 +13,14 @@ import (
 // Must run after AuthUser has stored the user in the context.
 func TraceUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		u, exists := c.Get("User")
+		u, exists := AuthUserFromContext(c)
 		if !exists {
 			c.Next()
 			return
 		}
-		user := u.(model.User)
 		trace.SpanFromContext(c.Request.Context()).SetAttributes(
-			semconv.UserID(strconv.FormatInt(int64(user.ID), 10)),
-			semconv.UserName(user.SignInName),
+			semconv.UserID(strconv.FormatInt(int64(u.ID), 10)),
+			semconv.UserName(u.SignInName),
 		)
 		c.Next()
 	}

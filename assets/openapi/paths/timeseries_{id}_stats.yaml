@@ -1,0 +1,55 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+get:
+  tags:
+    - Timeseries
+  summary: Compute statistical metadata of a timeseries
+  description: >
+    Computes statistics (count, range, mean, stddev).
+    When the node's metadata contains a `resolution` value in seconds, the
+    response additionally includes completeness and gap information.
+
+    Gap detection: samples are ordered by timestamp and the duration between
+    each consecutive pair is computed in minutes. An interval is reported as
+    a gap when that duration exceeds twice the sampling period (i.e.
+    `2 * resolution`, for example 2 minutes when `resolution` is 60 s), with a
+    minimum threshold of 1 minute. Gaps are returned longest-first, capped at
+    20, each with its start/end timestamps and duration in minutes.
+  security:
+    - JWTAuth: []
+  parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Inclusive lower time bound
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Inclusive upper time bound
+    - name: agg
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [1h, 1d, 1M, 1y]
+      description: Rollup granularity; when set computes stats on the pre-aggregated buckets
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/TimeseriesStats.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

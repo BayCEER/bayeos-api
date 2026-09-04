@@ -1,0 +1,77 @@
+get:
+  tags:
+    - Timeseries
+  summary: Query data points of multiple timeseries
+  description: >
+    Fetches data from several timeseries in a single request using a compact,
+    column-oriented return format in which each series reports its id once and
+    timestamps/values as parallel arrays. Only timeseries the caller may read
+    are returned; unknown or non-readable ids are skipped.
+  security:
+    - JWTAuth: []
+  parameters:
+    - name: ids
+      in: query
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: array
+        items:
+          type: integer
+          format: int32
+      description: Comma-separated timeseries node ids to fetch (e.g. `ids=5,6,7`)
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Inclusive lower time bound
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Inclusive upper time bound
+    - name: sample_interval
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [1h, 1d, 1M, 1y]
+      description: Rollup granularity; when set returns one sampled value per bucket
+    - name: sample_func
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [avg, count, sum, last, min, max, first]
+        default: avg
+      description: Aggregate applied within each bucket; ignored when `sample_interval` is empty
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+      description: Maximum number of data points to return per series; the most recent points are returned
+    - name: ts_type
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [iso, epoch]
+        default: iso
+      description: Timestamp encoding of the response; `iso` (default) uses RFC3339 strings, `epoch` uses epoch microseconds
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/TimeseriesBatchData.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

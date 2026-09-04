@@ -9,6 +9,11 @@ post:
   tags:
     - Timeseries
   summary: Insert data points into a timeseries
+  description: >
+    Inserts data points into a timeseries. The request body is an array of data points, each containing a timestamp and a value. 
+    The timestamps must be in ISO 8601 format and the values must be numeric. 
+    The server will return a 201 Created response if the data points are successfully inserted.
+    Existing data points with the same timestamp will be overwritten.
   security:
     - JWTAuth: []
   requestBody:
@@ -45,13 +50,21 @@ get:
         type: string
         format: date-time
       description: Inclusive upper time bound
-    - name: agg
+    - name: sample_interval
       in: query
       required: false
       schema:
         type: string
         enum: [1h, 1d, 1M, 1y]
-      description: Rollup granularity; when set returns the mean per bucket
+      description: Rollup granularity; when set returns one sampled value per bucket
+    - name: sample_func
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [avg, count, sum, last, min, max, first]
+        default: avg
+      description: Aggregate applied within each bucket; ignored when `sample_interval` is empty
     - name: limit
       in: query
       required: false
@@ -60,14 +73,20 @@ get:
         format: int32
         minimum: 1
       description: Maximum number of data points to return; the most recent points are returned
+    - name: ts_type
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [iso, epoch]
+        default: iso
+      description: Timestamp encoding of the response; `iso` (default) uses RFC3339 strings, `epoch` uses epoch microseconds
   responses:
     "200":
       description: ok
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: ../schema/TimeseriesDataPoint.yaml
+            $ref: ../schema/TimeseriesBatchData.yaml
     default:
       $ref: ../components/GenericError.yaml#/GenericError

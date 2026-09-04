@@ -62,6 +62,7 @@ func NewMainHandler(c *Config) {
 	r.POST("/api/auth/signin", h.SignIn)
 	r.POST("/api/auth/signup", h.SignUp)
 
+	// Secured by AuthUser middleware, which validates the ID token and adds the user to the context.
 	sec := r.Group("/").Use(m.AuthUser(c.IDTokenService), m.TraceUser())
 	sec.PUT("/api/auth/refresh", h.RefreshIDToken)
 	sec.PUT("/api/auth/password", h.SetPassword)
@@ -74,8 +75,7 @@ func NewMainHandler(c *Config) {
 	sec.POST("/api/users/:id/image", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.CreateUserImage)
 	sec.DELETE("/api/users/:id/image", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.DeleteUserImage)
 
-	sec.GET("/api/users/:id/privileges/grantor", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.GetNodePrivsByGrantorID)
-	sec.GET("/api/users/:id/privileges/grantee", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.GetNodePrivsByGranteeID)
+	sec.GET("/api/users/:id/privileges", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.GetUserPrivileges)
 
 	sec.POST("/api/users", m.AuthSuper(), h.CreateUser)
 
@@ -84,14 +84,13 @@ func NewMainHandler(c *Config) {
 
 	// With permission check implemented in handler
 	sec.GET("/api/nodes/search", h.SearchNodes)
-	sec.GET("/api/nodes/search/path", h.SearchNodesByPath)
 	sec.GET("/api/nodes", h.GetNodes)
 
 	// Node Permissions
 	rwCheck := m.NodePermissionCheck(h.NodeService, mo.READ_PERMISSION+mo.WRITE_PERMISSION)
 	rwgCheck := m.NodePermissionCheck(h.NodeService, mo.FULL_PERMISSION)
 
-	sec.POST("/api/nodes", m.IdFromBody("parent_id", "NodeID"), rwCheck, h.CreateNode)
+	sec.POST("/api/nodes", m.ResolvePathOrIdFromBody("parent_id", "node_path", "NodeID"), rwCheck, h.CreateNode)
 
 	sec.GET("/api/nodes/:id/children", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeChildren)
 	sec.GET("/api/nodes/:id/parents", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeParents)
@@ -140,13 +139,13 @@ func registerPlugins(h *Handler, c *Config, sec gin.IRoutes) {
 	}
 }
 
-// runNodeDeleteHooks invokes all registered node-delete hooks after a node has
+// runNodeDeleteHooks invokes all registered node-delete hooks after nodes have
 // been removed from the Postgres node table. Errors are logged but do not fail
 // the already-committed node deletion.
-func (h *Handler) runNodeDeleteHooks(ctx context.Context, nodeID int32) {
+func (h *Handler) runNodeDeleteHooks(ctx context.Context, nodeIDs []int32) {
 	for _, hook := range h.nodeDeleteHooks {
-		if err := hook(ctx, nodeID); err != nil {
-			log.Errorf("node delete hook failed for node %d: %v", nodeID, err)
+		if err := hook(ctx, nodeIDs); err != nil {
+			log.Errorf("node delete hook failed for nodes %v: %v", nodeIDs, err)
 		}
 	}
 }

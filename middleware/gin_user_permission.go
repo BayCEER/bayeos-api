@@ -3,27 +3,27 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/gin-gonic/gin"
 )
 
 func UserPermissionCheck() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		uID, exists := c.Get("UserID")
+
+		user, exists := AuthUserFromContext(c)
 		if !exists {
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 
-		user, exists := c.Get("User")
+		// Target from path set by middleware
+		uID, exists := UserIDFromContext(c)
 		if !exists {
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 
-		u := user.(model.User)
-
-		if !(u.SuperUser || u.ID == uID) {
+		// Permission check
+		if !(user.SuperUser || user.ID == uID) {
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}

@@ -43,13 +43,13 @@ func (h *Handler) GetUser(c *gin.Context) {
 
 func (h *Handler) GetUsers(c *gin.Context) {
 
-	var query model.IdFormQuery
-	if err := c.ShouldBindQuery(&query); err != nil {
-		mw.AbortWithBadRequestError(c, "Invalid query parameters")
+	ids, err := strings.ParseCSVToInt32(c.Query("ids"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid ids parameter")
 		return
 	}
 
-	if users, err := h.UserService.GetUsers(c.Request.Context(), query.IDs); err != nil {
+	if users, err := h.UserService.GetUsers(c.Request.Context(), ids); err != nil {
 		mw.AbortWithInternalError(c, "Failed to get users")
 		return
 	} else {

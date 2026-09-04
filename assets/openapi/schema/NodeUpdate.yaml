@@ -1,0 +1,23 @@
+type: object
+description: >
+  Updateable node attributes. Omitted fields are left unchanged.
+  For a timeseries node, setting `metadata.resolution` (in seconds) enables
+  completeness and gap statistics on the stats endpoint.
+properties:
+  display_name:
+    type: string
+    pattern: '^\w+$'
+  kind:
+    type: string
+  parent_id:
+    type: integer
+    format: int32
+  metadata:
+    type: object
+    description: Optional arbitrary key/value metadata; a `resolution` value in seconds enables completeness and gap statistics
+example:
+  display_name: "Temperature (10m)"
+  metadata:
+    resolution: 3600
+    lat: 49.9
+    lon: 11.5

@@ -14,8 +14,7 @@ type NodePrivService interface {
 	CreateNodePriv(ctx context.Context, nodePriv *model.NodePrivilege) error
 	DeleteNodePriv(ctx context.Context, id int32) error
 	UpdateNodePriv(ctx context.Context, id int32, permission uint8) error
-	GetNodePrivsByGrantorID(ctx context.Context, id int32) ([]model.NodePrivilege, error)
-	GetNodePrivsByGranteeID(ctx context.Context, id int32) ([]model.NodePrivilege, error)
+	GetNodePrivsByUserID(ctx context.Context, id int32) ([]model.NodePrivilege, error)
 }
 
 type nodePrivService struct {
@@ -57,18 +56,10 @@ func (s *nodePrivService) UpdateNodePriv(ctx context.Context, id int32, permissi
 	return nil
 }
 
-func (s *nodePrivService) GetNodePrivsByGrantorID(ctx context.Context, id int32) ([]model.NodePrivilege, error) {
-	n, err := s.sqlRepo.FindNodePrivsByGrantorID(ctx, id)
+func (s *nodePrivService) GetNodePrivsByUserID(ctx context.Context, id int32) ([]model.NodePrivilege, error) {
+	n, err := s.sqlRepo.FindNodePrivsByUserID(ctx, id)
 	if err != nil {
-		return n, fmt.Errorf("node privileges with grantor_id %d not found: %w", id, err)
-	}
-	return n, nil
-}
-
-func (s *nodePrivService) GetNodePrivsByGranteeID(ctx context.Context, id int32) ([]model.NodePrivilege, error) {
-	n, err := s.sqlRepo.FindNodePrivsByGranteeID(ctx, id)
-	if err != nil {
-		return n, fmt.Errorf("node privileges with grantee_id %d not found: %w", id, err)
+		return n, fmt.Errorf("node privileges for user %d not found: %w", id, err)
 	}
 	return n, nil
 }

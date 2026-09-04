@@ -18,6 +18,8 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /app
 
 COPY --from=builder /app/bayeos-api .
+COPY migrations/ /migrations/
+COPY assets/ /assets/
 
 EXPOSE 5532
 

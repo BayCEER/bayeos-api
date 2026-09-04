@@ -15,18 +15,6 @@ type NodeAuthorizer interface {
 func NodePermissionCheck(a NodeAuthorizer, perm uint8) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
-		nodeID, exists := c.Get("NodeID")
-		if !exists {
-			c.AbortWithStatus(http.StatusInternalServerError)
-			return
-		}
-
-		user, exists := c.Get("User")
-		if !exists {
-			c.AbortWithStatus(http.StatusInternalServerError)
-			return
-		}
-
 		var p uint8
 		if model.Readable(perm) || model.Writeable(perm) {
 			p = PermissionFromMethod(c.Request.Method)
@@ -36,7 +24,19 @@ func NodePermissionCheck(a NodeAuthorizer, perm uint8) gin.HandlerFunc {
 			p = p + model.GRANT_PERMISSION
 		}
 
-		b, err := a.HasPermission(c.Request.Context(), nodeID.(int32), p, user.(model.User).ID)
+		userID, exists := AuthUserIDFromContext(c)
+		if !exists {
+			AbortWithUnauthorizedError(c, "Unauthenticated")
+			return
+		}
+
+		nodeID, exists := NodeIDFromContext(c)
+		if !exists {
+			AbortWithInternalError(c, "NodeID not found")
+			return
+		}
+
+		b, err := a.HasPermission(c.Request.Context(), nodeID, p, userID)
 		if err != nil {
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return

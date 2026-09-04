@@ -51,11 +51,13 @@ func (h *Handler) CreateNodePriv(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	user, exists := c.Get("User")
+
+	grantorID, exists := mw.AuthUserIDFromContext(c)
 	if !exists {
-		mw.AbortWithUnauthorizedError(c, "Missing header information")
+		mw.AbortWithInternalError(c, "user id not found")
 		return
 	}
+
 	if err := c.BindJSON(&p); err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid request body")
 		return
@@ -63,7 +65,7 @@ func (h *Handler) CreateNodePriv(c *gin.Context) {
 
 	// Overwrite body id, grantor is the authenticated user
 	p.NodeID = id
-	p.GrantorID = user.(model.User).ID
+	p.GrantorID = grantorID
 
 	if err := h.NodePrivService.CreateNodePriv(c.Request.Context(), &p); err != nil {
 		mw.AbortWithInternalError(c, "Failed to create node privilege")
@@ -111,34 +113,16 @@ func (h *Handler) UpdateNodePriv(c *gin.Context) {
 
 }
 
-func (h *Handler) GetNodePrivsByGrantorID(c *gin.Context) {
-
+func (h *Handler) GetUserPrivileges(c *gin.Context) {
 	id, err := strings.ParseStringToInt32(c.Param("id"))
 	if err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	privs, err := h.NodePrivService.GetNodePrivsByGrantorID(c.Request.Context(), id)
+	privs, err := h.NodePrivService.GetNodePrivsByUserID(c.Request.Context(), id)
 	if err != nil {
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get node privileges: %v", err))
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get user privileges: %v", err))
 		return
 	}
 	c.JSON(http.StatusOK, privs)
-
-}
-
-func (h *Handler) GetNodePrivsByGranteeID(c *gin.Context) {
-
-	id, err := strings.ParseStringToInt32(c.Param("id"))
-	if err != nil {
-		mw.AbortWithBadRequestError(c, "Invalid id parameter")
-		return
-	}
-	privs, err := h.NodePrivService.GetNodePrivsByGranteeID(c.Request.Context(), id)
-	if err != nil {
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to get node privileges: %v", err))
-		return
-	}
-	c.JSON(http.StatusOK, privs)
-
 }

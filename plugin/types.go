@@ -9,10 +9,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// NodeDeleteHookFunc is invoked by the core API after a node has been deleted
-// from the Postgres node table, with the id of the deleted node. Plugins use it
-// to clean up related data that lives outside the node table (e.g. QuestDB).
-type NodeDeleteHookFunc func(ctx context.Context, nodeID int32) error
+// NodeDeleteHookFunc is invoked by the core API after nodes have been deleted
+// from the Postgres node table, with the ids of all deleted nodes (including
+// descendants). Plugins use it to clean up related data that lives outside the
+// node table (e.g. QuestDB).
+type NodeDeleteHookFunc func(ctx context.Context, nodeIDs []int32) error
 
 // Host is the extension surface passed to each plugin at registration time.
 // It exposes the secured router group (AuthUser + TraceUser already applied)

@@ -23,7 +23,7 @@ func TestTraceUser(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Set("User", model.User{ID: 42, SignInName: "barti"})
+	c.Set(CtxAuthUser, model.User{ID: 42, SignInName: "barti"})
 
 	ctx, span := tp.Tracer("test").Start(context.Background(), "test-span")
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
@@ -35,7 +35,7 @@ func TestTraceUser(t *testing.T) {
 	require.Len(t, spans, 1)
 	attrs := make(map[attribute.Key]string)
 	for _, kv := range spans[0].Attributes() {
-		attrs[kv.Key] = kv.Value.Emit()
+		attrs[kv.Key] = kv.Value.String()
 	}
 	require.Equal(t, "42", attrs["user.id"])
 	require.Equal(t, "barti", attrs["user.name"])

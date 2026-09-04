@@ -9,7 +9,7 @@ import (
 
 func NodeBasicAuth(u service.UserService, n service.NodeService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if _, exists := c.Get("Node"); !exists {
+		if _, exists := c.Get(CtxNode); !exists {
 			user, password, hasAuth := c.Request.BasicAuth()
 			if hasAuth {
 				usr, err := u.SignIn(c.Request.Context(), model.SignInCredentials{Name: user, Password: password})
@@ -17,7 +17,7 @@ func NodeBasicAuth(u service.UserService, n service.NodeService) gin.HandlerFunc
 					AbortWithUnauthorizedError(c, "signin failed")
 					return
 				}
-				c.Set("NodeID", usr.HomeNodeID)
+				c.Set(CtxNodeID, usr.HomeNodeID)
 			}
 		}
 		c.Next()
@@ -30,12 +30,12 @@ type header struct {
 
 func NodeToken(s service.NodeService) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		if _, exists := ctx.Get("NodeID"); !exists {
+		if _, exists := ctx.Get(CtxNodeID); !exists {
 			h := header{}
 			if err := ctx.ShouldBindHeader(&h); err == nil {
 				if t, err := uuid.Parse(h.NodeToken); err == nil {
 					if n, err := s.FindNodeByToken(ctx.Request.Context(), t); err == nil {
-						ctx.Set("NodeID", n.ID)
+						ctx.Set(CtxNodeID, n.ID)
 					} else {
 						AbortWithNotFoundError(ctx, "node", "token", h.NodeToken)
 						return

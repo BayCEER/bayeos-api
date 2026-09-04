@@ -1,0 +1,59 @@
+type: object
+properties:
+  count:
+    type: integer
+    description: Number of data points used
+  first_ts:
+    type: string
+    format: date-time
+  last_ts:
+    type: string
+    format: date-time
+  min:
+    type: number
+    format: double
+  max:
+    type: number
+    format: double
+  mean:
+    type: number
+    format: double
+  stddev:
+    type: number
+    format: double
+    nullable: true
+  completeness:
+    type: object
+    nullable: true
+    description: Present only when the node metadata has a resolution value
+    properties:
+      expected_count:
+        type: integer
+      actual_count:
+        type: integer
+      missing_count:
+        type: integer
+      completeness_pct:
+        type: number
+        format: double
+  gaps:
+    type: array
+    nullable: true
+    description: >
+      Present only when the node metadata has a resolution value. The longest
+      intervals between consecutive samples that exceed twice the sampling
+      period, sorted by descending duration and capped at 20 entries.
+    items:
+      type: object
+      properties:
+        start:
+          type: string
+          format: date-time
+          description: Timestamp of the last sample before the gap
+        end:
+          type: string
+          format: date-time
+          description: Timestamp of the next sample after the gap
+        duration_minutes:
+          type: integer
+          description: Length of the gap in minutes

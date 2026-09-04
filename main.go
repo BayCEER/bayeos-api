@@ -173,12 +173,7 @@ func main() {
 	port := mustGetEnv("WS_API_PORT")
 	log.Infof("server started on port:%v", port)
 
-	tls, exists := os.LookupEnv("WS_TLS")
-	if exists && strings.EqualFold(tls, "true") {
-		r.RunTLS(fmt.Sprintf(":%v", port), mustGetEnv("WS_CERT_FILE"), mustGetEnv("WS_KEY_FILE"))
-	} else {
-		r.Run(fmt.Sprintf(":%v", port))
-	}
+	r.Run(fmt.Sprintf(":%v", port))
 }
 
 func migrateQuestDB(qdb *pgx.Conn, migrationPath string) error {

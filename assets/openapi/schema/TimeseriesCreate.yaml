@@ -6,6 +6,38 @@ properties:
   parent_id:
     type: integer
     format: int32
+    description: >
+      Parent node id. Required when `path` is absent. Ignored when `path`
+      is provided.
+  node_path:
+    type: string
+    description: >
+      Slash-delimited path from root (`/...`) or home (`~/...`).
+      Intermediate Folder nodes are created as needed. When provided,
+      `parent_id` is ignored.
+  metadata:
+    type: object
+    description: Optional arbitrary key/value metadata attached to the node
+    properties:
+      unit:
+        type: string
+        description: Physical unit of the value, e.g. "°C", "%"
+      lat:
+        type: number
+        format: double
+        description: Latitude
+      lon:
+        type: number
+        format: double
+        description: Longitude
+      resolution:
+        type: number
+        description: Sample interval in seconds; enables completeness/gap statistics
+    additionalProperties: true
 example:
-  display_name: Sensor1
-  parent_id: 10
+  display_name: Temperature (10m)
+  parent_id: 3
+  metadata:
+    resolution: 3600
+    lat: 21.0
+    lon: 3.0

@@ -6,7 +6,7 @@ parameters:
       type: integer
       format: int32
 get:
-  summary: Get privileges of a user
+  summary: Get all node privileges of a user
   tags:
     - Users
   security:

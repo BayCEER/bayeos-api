@@ -16,13 +16,14 @@ type Node struct {
 	Permission  uint8     `db:"permission" json:"permission"`
 	NodePath    string    `db:"node_path" json:"node_path"`
 	CreatedAt   null.Time `db:"created_at" json:"created_at"`
+	Metadata    Metadata  `db:"metadata" json:"metadata"`
 }
 
 type NodePrivilege struct {
 	ID         int32 `db:"id" json:"id"`
 	NodeID     int32 `db:"node_id" json:"node_id"`
-	GranteeID  int32 `db:"grantee_id" json:"grantee_id"`
 	GrantorID  int32 `db:"grantor_id" json:"grantor_id"`
+	GranteeID  int32 `db:"grantee_id" json:"grantee_id"`
 	Permission uint8 `db:"permission" json:"permission"`
 }
 

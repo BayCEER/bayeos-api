@@ -48,19 +48,14 @@ paths:
     $ref: paths/users_{id}.yaml
   /users/{id}/image:
     $ref: paths/users_{id}_image.yaml
-  /users/{id}/privileges/grantee:
-    description: Get all privileges of a user where the user is the grantee
-    $ref: paths/users_{id}_privileges.yaml
-  /users/{id}/privileges/grantor:
-    description: Get all privileges of a user where the user is the grantor
+  /users/{id}/privileges:
+    description: Get all privileges of a user on nodes
     $ref: paths/users_{id}_privileges.yaml
 
   /nodes:
     $ref: paths/nodes.yaml
   /nodes/search:
     $ref: paths/nodes_search.yaml
-  /nodes/search/path:
-    $ref: paths/nodes_search_path.yaml
   /nodes/{id}/children:
     $ref: paths/nodes_{id}_children.yaml
   /nodes/{id}/parents:
@@ -78,7 +73,11 @@ paths:
 
   /timeseries:
     $ref: paths/timeseries.yaml
+  /timeseries/data:
+    $ref: paths/timeseries_data.yaml
   /timeseries/{id}/data:
     $ref: paths/timeseries_{id}_data.yaml
+  /timeseries/{id}/stats:
+    $ref: paths/timeseries_{id}_stats.yaml
   /timeseries/{id}:
     $ref: paths/timeseries_{id}.yaml

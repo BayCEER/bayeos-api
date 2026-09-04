@@ -65,7 +65,7 @@ func (h *Handler) SignOut(c *gin.Context) {
 }
 
 func (h *Handler) SetPassword(c *gin.Context) {
-	user, exists := c.Get("User")
+	user, exists := mw.AuthUserFromContext(c)
 	if !exists {
 		mw.AbortWithUnauthorizedError(c, "Missing header information")
 		return
@@ -77,7 +77,7 @@ func (h *Handler) SetPassword(c *gin.Context) {
 		return
 	}
 
-	if !user.(model.User).SuperUser && sc.Name != user.(model.User).SignInName {
+	if !user.SuperUser && sc.Name != user.SignInName {
 		mw.AbortWithForbiddenError(c, "Missing privileges")
 		return
 	}
@@ -91,14 +91,14 @@ func (h *Handler) SetPassword(c *gin.Context) {
 }
 
 func (h *Handler) RefreshIDToken(c *gin.Context) {
-	user, exists := c.Get("User")
+	user, exists := mw.AuthUserFromContext(c)
 	if !exists {
-		mw.AbortWithBadRequestError(c, "Missing header information")
+		mw.AbortWithUnauthorizedError(c, "Missing header information")
 		return
 	}
-	token, err := h.IDTokenService.CreateToken(user.(model.User))
+	token, err := h.IDTokenService.CreateToken(user)
 	if err != nil {
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to create token for user: %v", user.(model.User).SignInName))
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to create token for user: %v", user.SignInName))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{

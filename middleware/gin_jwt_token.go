@@ -30,7 +30,7 @@ func AuthUser(s service.IDTokenService) gin.HandlerFunc {
 			AbortWithUnauthorizedError(c, "Provided token is invalid or expired")
 			return
 		}
-		c.Set("User", user)
+		c.Set(CtxAuthUser, user)
 		c.Next()
 	}
 
@@ -38,7 +38,7 @@ func AuthUser(s service.IDTokenService) gin.HandlerFunc {
 
 func AuthSuper() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		user, exists := c.Get("User")
+		user, exists := c.Get(CtxAuthUser)
 		if !exists {
 			AbortWithInternalError(c, "User not found in context")
 			return

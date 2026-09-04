@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -16,10 +17,13 @@ type NodeService interface {
 	GetNodeChildren(ctx context.Context, id int32, userID int32) ([]model.Node, error)
 	GetNodeParents(ctx context.Context, id int32, userID int32) ([]model.Node, error)
 	CreateNode(ctx context.Context, node *model.Node, userID int32) error
+	CreateNodeByPath(ctx context.Context, node *model.Node, baseNodeID int32, path string, userID int32) error
 	UpdateNode(ctx context.Context, id int32, fields *map[string]interface{}) error
+	UpdateNodeMetadata(ctx context.Context, id int32, metadata map[string]any) error
 	DeleteNode(ctx context.Context, id int32) error
+	FindNodeDescendantsByID(ctx context.Context, id int32) ([]int32, error)
+	DeleteNodesByIDs(ctx context.Context, ids []int32) error
 	FindNodeByToken(ctx context.Context, token uuid.UUID) (model.Node, error)
-	FindNodesByPath(ctx context.Context, query string, kind string, skip int, limit int, userID int32) (int32, []model.Node, error)
 	FindNodesByAntPath(ctx context.Context, pattern string, kind string, skip int, limit int, userID int32) (int32, []model.Node, error)
 
 	GetNodeTokens(ctx context.Context, id int32) ([]model.NodeToken, error)
@@ -117,31 +121,6 @@ func (s *nodeService) GetNodePrivs(ctx context.Context, id int32) ([]model.NodeP
 	return privs, nil
 }
 
-func (s *nodeService) FindNodesByPath(ctx context.Context, query string, kind string, skip int, limit int, userID int32) (int32, []model.Node, error) {
-	nodes := []model.Node{}
-
-	hits, err := s.sqlRepo.FindNodesByPath(ctx, query, kind)
-	if err != nil {
-		return 0, hits, errors.New("failed to find nodes")
-	}
-	var total int32
-	for i, hit := range hits {
-		if p, err := s.sqlRepo.GetNodePermission(ctx, hit.ID, userID); err != nil {
-			return 0, nodes, errors.New("failed to get node permission")
-		} else {
-			if model.Readable(p) {
-				hit.Permission = p
-				total = total + 1
-				// Skip and limit
-				if (skip <= i) && (i < skip+limit) {
-					nodes = append(nodes, hit)
-				}
-			}
-		}
-	}
-	return total, nodes, nil
-}
-
 func (s *nodeService) FindNodesByAntPath(ctx context.Context, pattern string, kind string, skip int, limit int, userID int32) (int32, []model.Node, error) {
 	regex, err := antToRegex(pattern)
 	if err != nil {
@@ -185,6 +164,32 @@ func (s *nodeService) CreateNode(ctx context.Context, node *model.Node, userID i
 	return nil
 }
 
+// CreateNodeByPath resolves a slash-delimited path relative to baseNodeID,
+// creates intermediate Folder nodes as needed, and upserts the leaf node with
+// the given kind. The path must be relative (no leading "/" or "~").
+func (s *nodeService) CreateNodeByPath(ctx context.Context, node *model.Node, baseNodeID int32, path string, userID int32) error {
+	if path == "" {
+		return errors.New("path must not be empty")
+	}
+	if path[0] == '/' || path[0] == '~' {
+		return errors.New("path must not contain prefix; resolve base node before calling")
+	}
+	result, err := s.sqlRepo.FindOrCreateNodesByPath(ctx, baseNodeID, path, node.Kind)
+	if err != nil {
+		if errors.Is(err, repository.ErrKindConflict) {
+			return fmt.Errorf("kind conflict at path %q: %w", path, err)
+		}
+		return fmt.Errorf("failed to resolve path %q: %w", path, err)
+	}
+	*node = result
+	if p, err := s.sqlRepo.GetNodePermission(ctx, node.ID, userID); err != nil {
+		return errors.New("failed to get node permission")
+	} else {
+		node.Permission = p
+	}
+	return nil
+}
+
 func (s *nodeService) DeleteNode(ctx context.Context, id int32) error {
 
 	if err := s.sqlRepo.DeleteNodeByID(ctx, id); err != nil {
@@ -193,10 +198,49 @@ func (s *nodeService) DeleteNode(ctx context.Context, id int32) error {
 	return nil
 }
 
+func (s *nodeService) FindNodeDescendantsByID(ctx context.Context, id int32) ([]int32, error) {
+	ids, err := s.sqlRepo.FindNodeDescendantsByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find descendants of node %d: %w", id, err)
+	}
+	return ids, nil
+}
+
+func (s *nodeService) DeleteNodesByIDs(ctx context.Context, ids []int32) error {
+	if err := s.sqlRepo.DeleteNodesByIDs(ctx, ids); err != nil {
+		return fmt.Errorf("failed to delete nodes: %w", err)
+	}
+	return nil
+}
+
 func (s *nodeService) UpdateNode(ctx context.Context, id int32, fields *map[string]interface{}) error {
 
 	if err := s.sqlRepo.Do(ctx, func(repo repository.SqlRepo) error {
 		for k, v := range *fields {
+			if k == "metadata" {
+				var md model.Metadata
+				switch t := v.(type) {
+				case map[string]any:
+					var err error
+					md, err = model.MetadataFromMap(t)
+					if err != nil {
+						return err
+					}
+				case nil:
+					// clearing not supported here; the DB default keeps it {}
+					continue
+				default:
+					data, err := json.Marshal(v)
+					if err != nil {
+						return err
+					}
+					md = model.NewMetadata(data)
+				}
+				if err := s.sqlRepo.MergeNodeMetadata(ctx, id, md); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := s.sqlRepo.UpdateNodeFieldByID(ctx, id, k, v); err != nil {
 				return err
 			}
@@ -206,6 +250,14 @@ func (s *nodeService) UpdateNode(ctx context.Context, id int32, fields *map[stri
 		return errors.New("failed to update node")
 	}
 	return nil
+}
+
+func (s *nodeService) UpdateNodeMetadata(ctx context.Context, id int32, metadata map[string]any) error {
+	md, err := model.MetadataFromMap(metadata)
+	if err != nil {
+		return err
+	}
+	return s.sqlRepo.MergeNodeMetadata(ctx, id, md)
 }
 
 func (s *nodeService) FindNodeByToken(ctx context.Context, token uuid.UUID) (model.Node, error) {

@@ -20,17 +20,10 @@ func TestGetNodePrivsByUser(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user)
 
-	req, err := NewJWTRequest("GET", fmt.Sprintf("/api/users/%d/privileges/grantee", user.ID), nil, jt)
+	req, err := NewJWTRequest("GET", fmt.Sprintf("/api/users/%d/privileges", user.ID), nil, jt)
 	require.NoError(t, err)
 	require.NotNil(t, req)
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	require.Equal(t, http.StatusOK, w.Code)
-
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/users/%d/privileges/grantor", user.ID), nil, jt)
-	require.NoError(t, err)
-	require.NotNil(t, req)
-	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
@@ -90,7 +83,7 @@ func TestNodePrivilegeCRUD(t *testing.T) {
 	require.Equal(t, created, got)
 
 	// UPDATE permission (read+write)
-	var patch = []byte(fmt.Sprintf(`{"permission": %d}`, model.READ_PERMISSION+model.WRITE_PERMISSION))
+	var patch = fmt.Appendf(nil, `{"permission": %d}`, model.READ_PERMISSION+model.WRITE_PERMISSION)
 	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), bytes.NewBuffer(patch), grantorToken)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
