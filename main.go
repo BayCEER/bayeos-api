@@ -125,8 +125,6 @@ func main() {
 
 	defer qdb.Close(context.Background())
 
-	// qdbRepo := repository.NewQuestRepository(qdb)
-
 	ldapRepo := repository.NewDisabledLdapRepo()
 
 	if ldapEnabled, exists := os.LookupEnv("WS_LDAP_ENABLED"); exists && strings.EqualFold(ldapEnabled, "true") {
@@ -148,7 +146,6 @@ func main() {
 	nodeService := service.NewNodeService(sqlRepo)
 	nodePrivService := service.NewNodePrivService(sqlRepo)
 	nodeTokenService := service.NewNodeTokenService(sqlRepo)
-	// seriesService := service.NewSeriesService(ctx, sqlRepo, qdbRepo)
 
 	idTokenService := service.NewTokenService(&service.TSConfig{
 		APIKey:            mustGetEnv("WS_API_KEY"),
@@ -227,13 +224,14 @@ func migrateQuestDB(qdb *pgx.Conn, migrationPath string) error {
 			}
 			log.Infof("migrated: %v ", file.Name())
 		}
-		log.Info("quest database migrated")
 	}
+	log.Info("quest database migrated")
 
 	return nil
 }
 
-func migratePg(db *sql.DB, migrationPath string) error {	driver, err := postgres.WithInstance(db, &postgres.Config{})
+func migratePg(db *sql.DB, migrationPath string) error {
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		return err
 	}
