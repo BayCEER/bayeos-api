@@ -5,7 +5,7 @@ import (
 
 	"github.com/BayCEER/bayeos/bayeos-api/service"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -22,8 +22,8 @@ type Host struct {
 	// Router is the authenticated route group on which plugins register
 	// endpoints. AuthUser and TraceUser middleware are already applied.
 	Router gin.IRoutes
-	// Quest is the QuestDB connection (raw pgx), matching how core accesses it.
-	Quest *pgx.Conn
+	// Quest is the concurrency-safe QuestDB connection pool shared by plugins.
+	Quest *pgxpool.Pool
 	// NodeService is shared for node CRUD and permission lookups.
 	NodeService service.NodeService
 	// NodePrivService is shared for granting node privileges.

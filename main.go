@@ -28,6 +28,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 )
@@ -113,17 +114,34 @@ func main() {
 
 	// Open QuestDB connection
 	questURL := mustGetEnv("QUEST_DB_URL")
-	qdb, err := pgx.Connect(context.Background(), questURL)
+	questConfig, err := pgx.ParseConfig(questURL)
+	if err != nil {
+		log.Fatalf("quest configuration failed:%v", err)
+	}
+	questConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+	qdb, err := pgx.ConnectConfig(context.Background(), questConfig)
 	if err != nil {
 		log.Fatalf("quest connection failed:%v", err)
 	}
-	log.Infof("questdb connected")
 
 	if err := migrateQuestDB(qdb, mustGetEnv("MIGRATIONS_PATH")+"/questdb"); err != nil {
 		log.Fatalf("quest database migration failed with:%v", err)
 	}
+	if err := qdb.Close(context.Background()); err != nil {
+		log.ErrMsg(err, "quest migration connection close failed")
+	}
 
-	defer qdb.Close(context.Background())
+	questPoolConfig, err := pgxpool.ParseConfig(questURL)
+	if err != nil {
+		log.Fatalf("quest pool configuration failed:%v", err)
+	}
+	questPoolConfig.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+	questPool, err := pgxpool.NewWithConfig(context.Background(), questPoolConfig)
+	if err != nil {
+		log.Fatalf("quest connection pool failed:%v", err)
+	}
+	defer questPool.Close()
+	log.Infof("questdb connected")
 
 	ldapRepo := repository.NewDisabledLdapRepo()
 
@@ -162,7 +180,7 @@ func main() {
 		NodeTokenService: nodeTokenService,
 		IDTokenService:   idTokenService,
 		Tracer:           otel.Tracer(serviceName),
-		Quest:            qdb,
+		Quest:            questPool,
 		Plugins:          plugins(),
 		// SeriesService:    seriesService,
 	})

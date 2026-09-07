@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -29,12 +30,12 @@ type QuestRepo interface {
 // questRepo persists observations in the QuestDB series table. The series id is
 // the node id of the timeseries node as a string.
 type questRepo struct {
-	conn   *pgx.Conn
+	conn   *pgxpool.Pool
 	tracer trace.Tracer
 }
 
 // NewQuestRepo returns a QuestRepo backed by the given QuestDB connection.
-func NewQuestRepo(conn *pgx.Conn, tracer trace.Tracer) QuestRepo {
+func NewQuestRepo(conn *pgxpool.Pool, tracer trace.Tracer) QuestRepo {
 	return &questRepo{conn: conn, tracer: tracer}
 }
 

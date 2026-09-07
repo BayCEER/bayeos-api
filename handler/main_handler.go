@@ -10,7 +10,7 @@ import (
 	"github.com/BayCEER/bayeos/bayeos-api/service"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -34,8 +34,8 @@ type Config struct {
 	IDTokenService   service.IDTokenService
 	Tracer           trace.Tracer
 
-	// Quest is the QuestDB connection handed to plugins.
-	Quest *pgx.Conn
+	// Quest is the QuestDB connection pool handed to plugins.
+	Quest *pgxpool.Pool
 	// Plugins are registered via NewMainHandler after the secured route
 	// group is built.
 	Plugins []plugin.Plugin
