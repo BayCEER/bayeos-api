@@ -118,8 +118,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("quest configuration failed:%v", err)
 	}
-	questConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	questConfig.RuntimeParams["standard_conforming_strings"] = "on"
+	questConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
 	qdb, err := pgx.ConnectConfig(context.Background(), questConfig)
 	if err != nil {
 		log.Fatalf("quest connection failed:%v", err)
@@ -136,8 +135,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("quest pool configuration failed:%v", err)
 	}
-	questPoolConfig.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	questPoolConfig.ConnConfig.RuntimeParams["standard_conforming_strings"] = "on"
+	questPoolConfig.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
 	questPool, err := pgxpool.NewWithConfig(context.Background(), questPoolConfig)
 	if err != nil {
 		log.Fatalf("quest connection pool failed:%v", err)
