@@ -197,6 +197,35 @@ type TimeseriesStats struct {
 	Gaps         []GapInfo          `json:"gaps,omitempty"`
 }
 
+func (s TimeseriesStats) MarshalJSON() ([]byte, error) {
+	type statsJSON struct {
+		Count        int64              `json:"count"`
+		FirstTs      *time.Time         `json:"first_ts"`
+		LastTs       *time.Time         `json:"last_ts"`
+		Min          *float64           `json:"min"`
+		Max          *float64           `json:"max"`
+		Mean         *float64           `json:"mean"`
+		Stddev       *float64           `json:"stddev"`
+		Completeness *CompletenessStats `json:"completeness,omitempty"`
+		Gaps         []GapInfo          `json:"gaps,omitempty"`
+	}
+
+	result := statsJSON{
+		Count:        s.Count,
+		Stddev:       s.Stddev,
+		Completeness: s.Completeness,
+		Gaps:         s.Gaps,
+	}
+	if s.Count > 0 {
+		result.FirstTs = &s.FirstTs
+		result.LastTs = &s.LastTs
+		result.Min = &s.Min
+		result.Max = &s.Max
+		result.Mean = &s.Mean
+	}
+	return json.Marshal(result)
+}
+
 type CompletenessStats struct {
 	ExpectedCount   int64   `json:"expected_count"`
 	ActualCount     int64   `json:"actual_count"`

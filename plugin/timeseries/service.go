@@ -228,6 +228,9 @@ func (s *timeseriesService) GetStats(ctx context.Context, id int32, q Timeseries
 	if err != nil {
 		return nil, err
 	}
+	if stats.Count == 0 {
+		return stats, nil
+	}
 
 	if resolution, ok := n.Metadata.Map()["resolution"]; ok {
 		if resolutionSec, ok := resolution.(float64); ok && resolutionSec > 0 {
