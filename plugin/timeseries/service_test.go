@@ -15,17 +15,23 @@ import (
 // QuestDB.
 type fakeQuestRepo struct {
 	data              map[int32][]DataPoint
+	status            map[int32][]StatusPoint
 	lastInterval      string
 	lastSampleFunc    string
 	lastBatchSampleFn string
 }
 
 func newFakeQuestRepo() *fakeQuestRepo {
-	return &fakeQuestRepo{data: map[int32][]DataPoint{}}
+	return &fakeQuestRepo{data: map[int32][]DataPoint{}, status: map[int32][]StatusPoint{}}
 }
 
 func (f *fakeQuestRepo) Insert(ctx context.Context, nodeID int32, pts []DataPoint) error {
 	f.data[nodeID] = append(f.data[nodeID], pts...)
+	return nil
+}
+
+func (f *fakeQuestRepo) UpsertStatusBatch(ctx context.Context, nodeID int32, pts []StatusPoint) error {
+	f.status[nodeID] = append(f.status[nodeID], pts...)
 	return nil
 }
 
@@ -486,4 +492,30 @@ func TestQueryDataBatchSampleFunc(t *testing.T) {
 	require.Equal(t, "sum", r.lastBatchSampleFn)
 	require.Equal(t, "1M", data.SampleInterval)
 	require.Equal(t, "sum", data.SampleFunc)
+}
+
+func TestUpdateStatus(t *testing.T) {
+	r := newFakeQuestRepo()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	pts := []StatusPoint{
+		{Ts: base, Value: 1, Status: 1},
+		{Ts: base.Add(time.Hour), Value: 2, Status: 0},
+	}
+	require.NoError(t, svc.UpdateStatus(context.Background(), 1, pts, 1))
+	require.Equal(t, pts, r.status[1])
+}
+
+func TestUpdateStatusNotTimeseries(t *testing.T) {
+	r := newFakeQuestRepo()
+
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: "Folder", ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	err := svc.UpdateStatus(context.Background(), 1, []StatusPoint{{Ts: time.Now(), Value: 1, Status: 1}}, 1)
+	require.ErrorIs(t, err, ErrNotTimeseries)
+	require.Empty(t, r.status)
 }

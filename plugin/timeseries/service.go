@@ -22,6 +22,7 @@ type TimeseriesService interface {
 	Delete(ctx context.Context, id int32, userID int32) error
 
 	AddData(ctx context.Context, id int32, pts []DataPoint, userID int32) error
+	UpdateStatus(ctx context.Context, id int32, pts []StatusPoint, userID int32) error
 	QueryData(ctx context.Context, id int32, q TimeseriesQuery, userID int32) (*TimeseriesData, error)
 	QueryDataBatch(ctx context.Context, q TimeseriesDataQuery, userID int32) (*TimeseriesBatchData, error)
 	GetStats(ctx context.Context, id int32, q TimeseriesStatsQuery, userID int32) (*TimeseriesStats, error)
@@ -115,6 +116,13 @@ func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []DataPoi
 		return err
 	}
 	return s.queries.Insert(ctx, id, pts)
+}
+
+func (s *timeseriesService) UpdateStatus(ctx context.Context, id int32, pts []StatusPoint, userID int32) error {
+	if _, err := s.Get(ctx, id, userID); err != nil {
+		return err
+	}
+	return s.queries.UpsertStatusBatch(ctx, id, pts)
 }
 
 func (s *timeseriesService) QueryData(ctx context.Context, id int32, q TimeseriesQuery, userID int32) (*TimeseriesData, error) {

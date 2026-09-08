@@ -1,7 +1,8 @@
 CREATE TABLE IF NOT EXISTS series (
   id SYMBOL INDEX ,
   ts TIMESTAMP,
-  value DOUBLE
+  value DOUBLE,
+  status byte
 ) TIMESTAMP(ts) PARTITION BY DAY WAL
 DEDUP UPSERT KEYS(id, ts);
 

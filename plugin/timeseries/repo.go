@@ -19,6 +19,7 @@ const (
 // questRepo and satisfied by the QuestDB client.
 type QuestRepo interface {
 	Insert(ctx context.Context, nodeID int32, pts []DataPoint) error
+	UpsertStatusBatch(ctx context.Context, nodeID int32, pts []StatusPoint) error
 	Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int) ([]DataPoint, error)
 	QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, limit *int) ([]SeriesData, error)
 
@@ -51,6 +52,33 @@ func (r *questRepo) Insert(ctx context.Context, nodeID int32, pts []DataPoint) e
 		batch.Queue(
 			"INSERT INTO series (id, ts, value) VALUES ($1, $2, $3)",
 			fmt.Sprintf("%d", nodeID), p.Ts, p.Value,
+		)
+	}
+	br := r.conn.SendBatch(ctx, batch)
+	defer br.Close()
+	for range pts {
+		if _, err := br.Exec(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UpsertStatusBatch updates the status column of the given points. QuestDB
+// upserts on (id, ts), so the value column must be provided alongside the new
+// status; the row's value is preserved or set by the caller's payload.
+func (r *questRepo) UpsertStatusBatch(ctx context.Context, nodeID int32, pts []StatusPoint) error {
+	if len(pts) == 0 {
+		return nil
+	}
+	ctx, span := r.span(ctx, "timeseries.upsert_status")
+	defer span.End()
+
+	batch := &pgx.Batch{}
+	for _, p := range pts {
+		batch.Queue(
+			"INSERT INTO series (id, ts, value, status) VALUES ($1, $2, $3, $4)",
+			fmt.Sprintf("%d", nodeID), p.Ts, p.Value, p.Status,
 		)
 	}
 	br := r.conn.SendBatch(ctx, batch)

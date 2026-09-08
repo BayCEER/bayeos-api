@@ -15,6 +15,15 @@ type DataPoint struct {
 	Value float64   `json:"value"`
 }
 
+// StatusPoint is a single (ts, value, status) record used to update the status
+// column of a data point in the QuestDB series table. QuestDB upserts on
+// (id, ts), so value must be sent alongside the new status for the row.
+type StatusPoint struct {
+	Ts     time.Time `json:"ts" binding:"required"`
+	Value  float64   `json:"value" binding:"required"`
+	Status int8      `json:"status" binding:"required"`
+}
+
 // TimeseriesCreate is the body of POST /api/timeseries. The kind is fixed to
 // Timeseries by the plugin; the caller provides either parent_id or path.
 type TimeseriesCreate struct {

@@ -79,5 +79,7 @@ paths:
     $ref: paths/timeseries_{id}_data.yaml
   /timeseries/{id}/stats:
     $ref: paths/timeseries_{id}_stats.yaml
+  /timeseries/{id}/status:
+    $ref: paths/timeseries_{id}_status.yaml
   /timeseries/{id}:
     $ref: paths/timeseries_{id}.yaml
