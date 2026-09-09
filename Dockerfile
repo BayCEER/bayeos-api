@@ -26,7 +26,7 @@ WORKDIR /app
 
 COPY --from=builder /app/bayeos-api .
 COPY migrations/ /migrations/
-COPY assets/ /assets/
+COPY --from=builder /app/assets/ /assets/
 
 EXPOSE 5532
 

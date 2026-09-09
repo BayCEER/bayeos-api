@@ -1,8 +1,7 @@
 openapi: "3.1.0"
 info:
   title: BayEOS API
-  version: "__VERSION__"
-  description: "Build __VERSION__ (commit __COMMIT__, built __BUILD_DATE__)"
+  version: "__VERSION__, __BUILD_DATE__"
   x-build:
     version: "__VERSION__"
     commit: "__COMMIT__"
@@ -13,7 +12,7 @@ info:
   contact:
     name: Bayreuth Center of Ecology and Environmental Research
     url: https://www.bayceer.uni-bayreuth.de
-    email: admin@bayceer.uni-bayreuth.de
+    email: info@bayceer.uni-bayreuth.de
 
 servers:
   - url: /bayeos-api
