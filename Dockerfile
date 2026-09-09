@@ -7,7 +7,14 @@ COPY go.mod go.sum* ./
 RUN go mod download
 
 COPY . .
+
+# Bake build information into the served OpenAPI spec. Placeholder tokens are
+# replaced so the image's /assets/openapi/openapi.yaml reflects the real build.
 ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
+RUN sed -i -e "s|__VERSION__|${VERSION}|g" -e "s|__COMMIT__|${COMMIT}|g" -e "s|__BUILD_DATE__|${BUILD_DATE}|g" assets/openapi/openapi.yaml
+
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.Version=${VERSION}" -o bayeos-api .
 
 # Run stage

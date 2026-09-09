@@ -1,7 +1,12 @@
 openapi: "3.1.0"
 info:
   title: BayEOS API
-  version: "0.1.0"
+  version: "__VERSION__"
+  description: "Build __VERSION__ (commit __COMMIT__, built __BUILD_DATE__)"
+  x-build:
+    version: "__VERSION__"
+    commit: "__COMMIT__"
+    build_date: "__BUILD_DATE__"
   license:
     name: Creative Common  BY 4.0
     url: https://creativecommons.org/licenses/by/4.0/
