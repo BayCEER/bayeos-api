@@ -30,16 +30,16 @@ func (p *Plugin) Register(h *plugin.Host) error {
 	chkPerm := middleware.NodePermissionCheck(h.NodeService, model.READ_PERMISSION+model.WRITE_PERMISSION)
 
 	r := h.Router
-	r.POST("/api/timeseries", middleware.ResolvePathOrIdFromBody("parent_id", "node_path", "NodeID"), chkPerm, hd.Create)
-	r.GET("/api/timeseries/data", hd.QueryDataBatch)
-	r.POST("/api/timeseries/data", hd.AddDataBatch)
-	r.GET("/api/timeseries/:id", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.Get)
-	r.PATCH("/api/timeseries/:id", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.Update)
-	r.DELETE("/api/timeseries/:id", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.Delete)
-	r.POST("/api/timeseries/:id/data", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.AddData)
-	r.PATCH("/api/timeseries/:id/status", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.UpdateStatus)
-	r.GET("/api/timeseries/:id/data", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.QueryData)
-	r.GET("/api/timeseries/:id/stats", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.GetStats)
+	r.POST("/timeseries", middleware.ResolvePathOrIdFromBody("parent_id", "node_path", "NodeID"), chkPerm, hd.Create)
+	r.GET("/timeseries/data", hd.QueryDataBatch)
+	r.POST("/timeseries/data", hd.AddDataBatch)
+	r.GET("/timeseries/:id", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.Get)
+	r.PATCH("/timeseries/:id", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.Update)
+	r.DELETE("/timeseries/:id", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.Delete)
+	r.POST("/timeseries/:id/data", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.AddData)
+	r.PATCH("/timeseries/:id/status", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.UpdateStatus)
+	r.GET("/timeseries/:id/data", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.QueryData)
+	r.GET("/timeseries/:id/stats", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.GetStats)
 
 	return nil
 }

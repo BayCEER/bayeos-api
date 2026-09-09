@@ -20,7 +20,7 @@ func TestSignUpOut(t *testing.T) {
 		DisplayName:  "Dummy User",
 		EmailAddress: "dummy@dummy.com",
 		Password:     "dummyPassword"}
-	req, err := NewRequest("POST", "/api/auth/signup", suc)
+	req, err := NewRequest("POST", "/bayeos-api/auth/signup", suc)
 	require.NoError(t, err)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -31,7 +31,7 @@ func TestSignUpOut(t *testing.T) {
 	require.NoError(t, err)
 
 	// Refresh
-	req, err = NewJWTRequest("PUT", "/api/auth/refresh", nil, token)
+	req, err = NewJWTRequest("PUT", "/bayeos-api/auth/refresh", nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -46,7 +46,7 @@ func TestSignUpOut(t *testing.T) {
 	var rtoken = rt["token"].(string)
 
 	// Change Password
-	req, err = NewJWTRequest("PUT", "/api/auth/password", model.SignInCredentials{Name: "dummy", Password: "newpassword"}, rtoken)
+	req, err = NewJWTRequest("PUT", "/bayeos-api/auth/password", model.SignInCredentials{Name: "dummy", Password: "newpassword"}, rtoken)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -62,7 +62,7 @@ func TestSignUpOut(t *testing.T) {
 
 	// SignOut
 	cre := model.SignInCredentials{Name: "dummy", Password: "newpassword"}
-	req, err = NewJWTRequest("POST", "/api/auth/signout", cre, token)
+	req, err = NewJWTRequest("POST", "/bayeos-api/auth/signout", cre, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)

@@ -22,10 +22,13 @@
     <script>
       window.addEventListener("DOMContentLoaded", (event) => {
         const rapidocEl = document.getElementById("rapidoc");
+        // The API context (URL prefix) is derived from the current path, e.g.
+        // /<context>/assets/openapi/rapidoc.html.
+        const context = window.location.pathname.split("/")[1] || "bayeos-api";
         rapidocEl.addEventListener("after-try", (e) => {
           let url = e.detail.request.url.replace(window.location.origin, "");
           if (
-            url == "/api/auth/signin" &&
+            url == "/" + context + "/auth/signin" &&
             e.detail.request.method === "POST" &&
             e.detail.response.ok
           ) {

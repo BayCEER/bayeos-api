@@ -35,7 +35,7 @@ type Host struct {
 }
 
 // AddNodeDeleteHook registers a callback to be run when a node is deleted via
-// the generic DELETE /api/nodes/{id} route. Hooks run in registration order.
+// the generic DELETE <context>/nodes/{id} route. Hooks run in registration order.
 func (h *Host) AddNodeDeleteHook(fn NodeDeleteHookFunc) {
 	if fn != nil {
 		h.nodeDeleteHooks = append(h.nodeDeleteHooks, fn)

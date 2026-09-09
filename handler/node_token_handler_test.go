@@ -27,7 +27,7 @@ func TestCreateGetDeleteNodeToken(t *testing.T) {
 	uu, err := uuid.NewRandom()
 	require.NoError(t, err)
 	nodetoken := model.NodeToken{NodeID: user.HomeNodeID, Token: uu}
-	req, err := NewJWTRequest("POST", fmt.Sprintf("/api/nodes/%d/tokens", user.HomeNodeID), nodetoken, jt)
+	req, err := NewJWTRequest("POST", fmt.Sprintf("/bayeos-api/nodes/%d/tokens", user.HomeNodeID), nodetoken, jt)
 	require.NoError(t, err)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -38,7 +38,7 @@ func TestCreateGetDeleteNodeToken(t *testing.T) {
 	require.Nil(t, err)
 
 	// GET
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/tokens/%d", user.HomeNodeID, nt.ID), nil, jt)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d/tokens/%d", user.HomeNodeID, nt.ID), nil, jt)
 	require.NoError(t, err)
 	require.NotNil(t, req)
 	w = httptest.NewRecorder()
@@ -53,7 +53,7 @@ func TestCreateGetDeleteNodeToken(t *testing.T) {
 	require.Equal(t, nt.Token, ret.Token)
 
 	// DELETE
-	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/api/nodes/%d/tokens/%d", user.HomeNodeID, ret.ID), nil, jt)
+	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/bayeos-api/nodes/%d/tokens/%d", user.HomeNodeID, ret.ID), nil, jt)
 	require.NoError(t, err)
 	require.NotNil(t, req)
 	w = httptest.NewRecorder()
@@ -73,7 +73,7 @@ func TestUpdateNodeToken(t *testing.T) {
 	require.NotNil(t, user)
 
 	// CREATE token
-	req, err := NewJWTRequest("POST", fmt.Sprintf("/api/nodes/%d/tokens", user.HomeNodeID), nil, jt)
+	req, err := NewJWTRequest("POST", fmt.Sprintf("/bayeos-api/nodes/%d/tokens", user.HomeNodeID), nil, jt)
 	require.NoError(t, err)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -86,14 +86,14 @@ func TestUpdateNodeToken(t *testing.T) {
 
 	// PATCH active=false
 	var patch = []byte(`{"active": false}`)
-	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/api/nodes/%d/tokens/%d", user.HomeNodeID, nt.ID), bytes.NewBuffer(patch), jt)
+	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/bayeos-api/nodes/%d/tokens/%d", user.HomeNodeID, nt.ID), bytes.NewBuffer(patch), jt)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
 	// Verify updated value
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/tokens/%d", user.HomeNodeID, nt.ID), nil, jt)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d/tokens/%d", user.HomeNodeID, nt.ID), nil, jt)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -107,14 +107,14 @@ func TestUpdateNodeToken(t *testing.T) {
 
 	// Unknown field is rejected by strict body validation
 	var badPatch = []byte(`{"unknown": 1}`)
-	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/api/nodes/%d/tokens/%d", user.HomeNodeID, nt.ID), bytes.NewBuffer(badPatch), jt)
+	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/bayeos-api/nodes/%d/tokens/%d", user.HomeNodeID, nt.ID), bytes.NewBuffer(badPatch), jt)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 
 	// Invalid nid is rejected
-	req, err = NewJWTRequest("PATCH", "/api/nodes/1/tokens/abc", nil, jt)
+	req, err = NewJWTRequest("PATCH", "/bayeos-api/nodes/1/tokens/abc", nil, jt)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)

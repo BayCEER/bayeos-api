@@ -87,12 +87,21 @@ func main() {
 	// OpenTelemetry middleware must be registered before the error-response middleware (registered in NewMainHandler), so that the traceId is available in the error response.
 	r.Use(otelgin.Middleware(serviceName))
 
-	r.GET("/api", func(c *gin.Context) {
+	// The API context (URL prefix) under which all handlers are registered. It
+	// defaults to "bayeos-api" and can be overridden with WS_BASE_PATH.
+	basePath := resolveBasePath()
+	log.Infof("API context:%v", basePath)
+
+	r.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusTemporaryRedirect, "/"+basePath)
+	})
+
+	r.GET("/"+basePath, func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", fmt.Appendf(nil, `<!DOCTYPE html>
 	<html lang="en"><head><meta charset="utf-8"><title>BayEOS API</title></head><body><h1>BayEOS API %s</h1>
-	<a href="/api/assets/openapi/rapidoc.html">OpenAPI Documentation</a>
+	<a href="/%s/assets/openapi/rapidoc.html">OpenAPI Documentation</a>
 	</body>
-	</html>`, Version))
+	</html>`, Version, basePath))
 	})
 
 	// Open PG connection
@@ -174,6 +183,7 @@ func main() {
 	handler.NewMainHandler(&handler.Config{
 		AssetsPath:       mustGetEnv("WS_ASSETS_PATH"),
 		Router:           r,
+		BasePath:         basePath,
 		UserService:      userService,
 		NodeService:      nodeService,
 		NodePrivService:  nodePrivService,
@@ -290,4 +300,17 @@ func mustGetEnvInt(key string) int {
 		panic(fmt.Sprintf("%s must be an integer: %v", key, err))
 	}
 	return n
+}
+
+// resolveBasePath returns the API context (URL prefix) under which all
+// handlers are registered. It defaults to "bayeos-api" and can be overridden
+// via WS_BASE_PATH. Leading/trailing slashes are stripped, and an empty value
+// resets back to the default so the legacy /api prefix is never exposed.
+func resolveBasePath() string {
+	const defaultPath = "bayeos-api"
+	path := strings.Trim(os.Getenv("WS_BASE_PATH"), "/")
+	if path == "" {
+		return defaultPath
+	}
+	return path
 }

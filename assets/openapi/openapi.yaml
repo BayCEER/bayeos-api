@@ -11,10 +11,10 @@ info:
     email: admin@bayceer.uni-bayreuth.de
 
 servers:
-  - url: /api
-    description: current host
-  - url: http://localhost:5532/api
-    description: local host
+  - url: /bayeos-api
+    description: current host (default API context)
+  - url: http://localhost:5532/bayeos-api
+    description: local host (default API context)
 components:
   securitySchemes:
     BasicAuth:

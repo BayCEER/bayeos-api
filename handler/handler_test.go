@@ -93,6 +93,7 @@ func setup() {
 
 	NewMainHandler(&Config{
 		Router:           router,
+		BasePath:         "bayeos-api",
 		UserService:      service.NewUserService(sqlRepo, &LDAPMock{}),
 		NodeService:      service.NewNodeService(sqlRepo),
 		NodeTokenService: service.NewNodeTokenService(sqlRepo),
@@ -162,7 +163,7 @@ func CurrentUser(jwtToken string) (model.User, error) {
 func SignIn(name string, password string) (string, error) {
 	var token string
 	si := model.SignInCredentials{Name: name, Password: password}
-	req, err := NewRequest("POST", "/api/auth/signin", si)
+	req, err := NewRequest("POST", "/bayeos-api/auth/signin", si)
 	if err != nil {
 		return token, err
 	}
@@ -181,7 +182,7 @@ func SignIn(name string, password string) (string, error) {
 }
 
 func SignUp(name string, password string) (string, error) {
-	req, err := NewRequest("POST", "/api/auth/signup", model.SignUpCredentials{SignInName: name,
+	req, err := NewRequest("POST", "/bayeos-api/auth/signup", model.SignUpCredentials{SignInName: name,
 		DisplayName: name, EmailAddress: fmt.Sprintf("%v@simpsons.com", name), Password: password})
 	if err != nil {
 		return "", err

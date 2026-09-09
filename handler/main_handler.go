@@ -27,6 +27,10 @@ type Handler struct {
 type Config struct {
 	AssetsPath       string
 	Router           *gin.Engine
+	// BasePath is the URL prefix (context) under which every handler is
+	// registered, e.g. "bayeos-api". Routes drop the legacy "/api" segment and
+	// are mounted as /<BasePath>/<route>.
+	BasePath         string
 	UserService      service.UserService
 	NodeService      service.NodeService
 	NodeTokenService service.NodeTokenService
@@ -51,67 +55,68 @@ func NewMainHandler(c *Config) {
 	}
 
 	r := c.Router
+	base := "/" + c.BasePath
 
 	// errors raised via mw.Abort/c.Error must be converted into the ErrorResponse body before any route handlers run.
 	r.Use(m.Middleware())
 
-	log.Debugf("serving static assets from:%v on /api/assets", c.AssetsPath)
-	r.Use(static.Serve("/api/assets", static.LocalFile(c.AssetsPath, false)))
+	log.Debugf("serving static assets from:%v on %v/assets", c.AssetsPath, base)
+	r.Use(static.Serve(base+"/assets", static.LocalFile(c.AssetsPath, false)))
 
 	// Public
-	r.POST("/api/auth/signin", h.SignIn)
-	r.POST("/api/auth/signup", h.SignUp)
+	r.POST(base+"/auth/signin", h.SignIn)
+	r.POST(base+"/auth/signup", h.SignUp)
 
 	// Secured by AuthUser middleware, which validates the ID token and adds the user to the context.
-	sec := r.Group("/").Use(m.AuthUser(c.IDTokenService), m.TraceUser())
-	sec.PUT("/api/auth/refresh", h.RefreshIDToken)
-	sec.PUT("/api/auth/password", h.SetPassword)
-	sec.POST("/api/auth/signout", h.SignOut)
+	sec := r.Group(base).Use(m.AuthUser(c.IDTokenService), m.TraceUser())
+	sec.PUT("/auth/refresh", h.RefreshIDToken)
+	sec.PUT("/auth/password", h.SetPassword)
+	sec.POST("/auth/signout", h.SignOut)
 
-	sec.GET("/api/users", h.GetUsers)
-	sec.GET("/api/users/:id", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.GetUser)
+	sec.GET("/users", h.GetUsers)
+	sec.GET("/users/:id", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.GetUser)
 
-	sec.GET("/api/users/:id/image", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.GetUserImage)
-	sec.POST("/api/users/:id/image", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.CreateUserImage)
-	sec.DELETE("/api/users/:id/image", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.DeleteUserImage)
+	sec.GET("/users/:id/image", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.GetUserImage)
+	sec.POST("/users/:id/image", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.CreateUserImage)
+	sec.DELETE("/users/:id/image", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.DeleteUserImage)
 
-	sec.GET("/api/users/:id/privileges", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.GetUserPrivileges)
+	sec.GET("/users/:id/privileges", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.GetUserPrivileges)
 
-	sec.POST("/api/users", m.AuthSuper(), h.CreateUser)
+	sec.POST("/users", m.AuthSuper(), h.CreateUser)
 
-	sec.PATCH("/api/users/:id", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.UpdateUser)
-	sec.DELETE("/api/users/:id", m.AuthSuper(), h.DeleteUser)
+	sec.PATCH("/users/:id", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.UpdateUser)
+	sec.DELETE("/users/:id", m.AuthSuper(), h.DeleteUser)
 
 	// With permission check implemented in handler
-	sec.GET("/api/nodes/search", h.SearchNodes)
-	sec.GET("/api/nodes", h.GetNodes)
+	sec.GET("/nodes/search", h.SearchNodes)
+	sec.GET("/nodes", h.GetNodes)
 
 	// Node Permissions
 	rwCheck := m.NodePermissionCheck(h.NodeService, mo.READ_PERMISSION+mo.WRITE_PERMISSION)
 	rwgCheck := m.NodePermissionCheck(h.NodeService, mo.FULL_PERMISSION)
 
-	sec.POST("/api/nodes", m.ResolvePathOrIdFromBody("parent_id", "node_path", "NodeID"), rwCheck, h.CreateNode)
+	sec.POST("/nodes", m.ResolvePathOrIdFromBody("parent_id", "node_path", "NodeID"), rwCheck, h.CreateNode)
 
-	sec.GET("/api/nodes/:id/children", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeChildren)
-	sec.GET("/api/nodes/:id/parents", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeParents)
+	sec.GET("/nodes/:id/children", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeChildren)
+	sec.GET("/nodes/:id/parents", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeParents)
 
-	sec.GET("/api/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNode)
-	sec.PATCH("/api/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.UpdateNode)
-	sec.DELETE("/api/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteNode)
+	sec.GET("/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNode)
+	sec.PATCH("/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.UpdateNode)
+	sec.DELETE("/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteNode)
 
-	sec.GET("/api/nodes/:id/tokens", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeTokens)
-	sec.POST("/api/nodes/:id/tokens", m.IdFromPath("id", "NodeID"), rwCheck, h.CreateNodeToken)
+	sec.GET("/nodes/:id/tokens", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeTokens)
+	sec.POST("/nodes/:id/tokens", m.IdFromPath("id", "NodeID"), rwCheck, h.CreateNodeToken)
 
-	sec.GET("/api/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeToken)
-	sec.DELETE("/api/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteNodeToken)
-	sec.PATCH("/api/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.UpdateNodeToken)
+	sec.GET("/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeToken)
+	sec.DELETE("/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteNodeToken)
+	sec.PATCH("/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.UpdateNodeToken)
 
-	sec.GET("/api/nodes/:id/privileges", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodePrivs)
-	sec.POST("/api/nodes/:id/privileges", m.IdFromPath("id", "NodeID"), rwgCheck, h.CreateNodePriv)
+	sec.GET("/nodes/:id/privileges", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodePrivs)
+	sec.POST("/nodes/:id/privileges", m.IdFromPath("id", "NodeID"), rwgCheck, h.CreateNodePriv)
 
-	sec.GET("/api/nodes/:id/privileges/:pid", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodePriv)
-	sec.PATCH("/api/nodes/:id/privileges/:pid", m.IdFromPath("id", "NodeID"), rwgCheck, h.UpdateNodePriv)
-	sec.DELETE("/api/nodes/:id/privileges/:pid", m.IdFromPath("id", "NodeID"), rwgCheck, h.DeleteNodePrivilege)
+	sec.GET("/nodes/:id/privileges/:pid", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodePriv)
+	sec.PATCH("/nodes/:id/privileges/:pid", m.IdFromPath("id", "NodeID"), rwgCheck, h.UpdateNodePriv)
+	sec.DELETE("/nodes/:id/privileges/:pid", m.IdFromPath("id", "NodeID"), rwgCheck, h.DeleteNodePrivilege)
 
 	registerPlugins(h, c, sec)
 }

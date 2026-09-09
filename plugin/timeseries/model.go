@@ -24,7 +24,7 @@ type StatusPoint struct {
 	Status int8      `json:"status" binding:"required"`
 }
 
-// TimeseriesCreate is the body of POST /api/timeseries. The kind is fixed to
+// TimeseriesCreate is the body of POST <context>/timeseries. The kind is fixed to
 // Timeseries by the plugin; the caller provides either parent_id or path.
 type TimeseriesCreate struct {
 	DisplayName string         `json:"display_name"`
@@ -33,7 +33,7 @@ type TimeseriesCreate struct {
 	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
-// TimeseriesQuery are the query parameters of GET /api/timeseries/{id}/data.
+// TimeseriesQuery are the query parameters of GET <context>/timeseries/{id}/data.
 type TimeseriesQuery struct {
 	// From/To bound the queried time range (RFC3339). Optional.
 	From *time.Time `form:"from"`
@@ -52,7 +52,7 @@ type TimeseriesQuery struct {
 	TsType string `form:"ts_type"`
 }
 
-// TimeseriesDataQuery are the query parameters of GET /api/timeseries/data.
+// TimeseriesDataQuery are the query parameters of GET <context>/timeseries/data.
 // The ids parameter is a comma-separated list of node ids, e.g. ids=5,6,7.
 type TimeseriesDataQuery struct {
 	// IDs is populated by the handler from the raw comma-separated "ids"
@@ -75,7 +75,7 @@ type TimeseriesDataQuery struct {
 	TsType string `form:"ts_type"`
 }
 
-// TimeseriesStatsQuery are the query parameters of GET /api/timeseries/{id}/stats.
+// TimeseriesStatsQuery are the query parameters of GET <context>/timeseries/{id}/stats.
 // The rollup granularity keeps the "agg" name for this endpoint.
 type TimeseriesStatsQuery struct {
 	From *time.Time `form:"from"`
@@ -91,7 +91,7 @@ type SeriesData struct {
 	Values []float64   `json:"values"`
 }
 
-// TimeseriesBatchData is the compact return format of GET /api/timeseries/data.
+// TimeseriesBatchData is the compact return format of GET <context>/timeseries/data.
 // Each entry in Series carries its timestamps and values once, avoiding
 // repeating the id on every data point.
 type TimeseriesBatchData struct {
@@ -142,7 +142,7 @@ func (b TimeseriesBatchData) MarshalJSON() ([]byte, error) {
 	return json.Marshal(payload)
 }
 
-// TimeseriesData is the return format of GET /api/timeseries/{id}/data. It
+// TimeseriesData is the return format of GET <context>/timeseries/{id}/data. It
 // mirrors the column-oriented format of the batch endpoint, with a single
 // entry in Series carrying the parallel ts/values arrays.
 type TimeseriesData struct {
@@ -193,7 +193,7 @@ func (d TimeseriesData) MarshalJSON() ([]byte, error) {
 	return json.Marshal(payload)
 }
 
-// SeriesDataBatch is the body of POST /api/timeseries/data when writing
+// SeriesDataBatch is the body of POST <context>/timeseries/data when writing
 // multiple series in one request.
 type SeriesDataBatch struct {
 	Series []SeriesData `json:"series"`

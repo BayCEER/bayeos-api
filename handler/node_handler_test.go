@@ -21,7 +21,7 @@ func TestNodeCRUD(t *testing.T) {
 
 	// CREATE
 	node := model.Node{DisplayName: "Private Folder", ParentID: user.HomeNodeID}
-	req, err := NewJWTRequest("POST", "/api/nodes", node, token)
+	req, err := NewJWTRequest("POST", "/bayeos-api/nodes", node, token)
 	require.NoError(t, err)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -37,14 +37,14 @@ func TestNodeCRUD(t *testing.T) {
 
 	// PATCH
 	var patch = []byte(`{"display_name":"Springfield"}`)
-	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/api/nodes/%d", newNode.ID), bytes.NewBuffer(patch), token)
+	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/bayeos-api/nodes/%d", newNode.ID), bytes.NewBuffer(patch), token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
 	// GET
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d", newNode.ID), nil, token)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d", newNode.ID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -56,14 +56,14 @@ func TestNodeCRUD(t *testing.T) {
 	require.Equal(t, "Springfield", node.DisplayName)
 
 	// CREATE node token
-	req, err = NewJWTRequest("POST", fmt.Sprintf("/api/nodes/%d/tokens", newNode.ID), nil, token)
+	req, err = NewJWTRequest("POST", fmt.Sprintf("/bayeos-api/nodes/%d/tokens", newNode.ID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	// GET node tokens
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/tokens", newNode.ID), nil, token)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d/tokens", newNode.ID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -75,7 +75,7 @@ func TestNodeCRUD(t *testing.T) {
 	require.Equal(t, 1, len(nodetokens))
 
 	// Get node token by id
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/tokens/%d", newNode.ID, nodetokens[0].ID), nil, token)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d/tokens/%d", newNode.ID, nodetokens[0].ID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -89,21 +89,21 @@ func TestNodeCRUD(t *testing.T) {
 	require.Equal(t, nodetokens[0].Token, nodetoken.Token)
 
 	// DELETE node token
-	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/api/nodes/%d/tokens/%d", newNode.ID, nodetokens[0].ID), nil, token)
+	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/bayeos-api/nodes/%d/tokens/%d", newNode.ID, nodetokens[0].ID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
 	// DELETE node token again (should fail)
-	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/api/nodes/%d/tokens/%d", newNode.ID, nodetokens[0].ID), nil, token)
+	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/bayeos-api/nodes/%d/tokens/%d", newNode.ID, nodetokens[0].ID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusNotFound, w.Code)
 
 	// DELETE node
-	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/api/nodes/%d", newNode.ID), nil, token)
+	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/bayeos-api/nodes/%d", newNode.ID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -111,7 +111,7 @@ func TestNodeCRUD(t *testing.T) {
 
 	// DELETE node again (should fail): the permission check runs before the
 	// handler and is keyed on the node's own id, so a missing node is rejected as Forbidden.
-	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/api/nodes/%d", newNode.ID), nil, token)
+	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/bayeos-api/nodes/%d", newNode.ID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -125,7 +125,7 @@ func TestGetRootNode(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get root node
-	req, err := NewJWTRequest("GET", "/api/nodes", nil, token)
+	req, err := NewJWTRequest("GET", "/bayeos-api/nodes", nil, token)
 	require.NoError(t, err)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -138,7 +138,7 @@ func TestGetRootNode(t *testing.T) {
 	require.Equal(t, int32(1), nodes[0].ID)
 
 	// Try to delete root
-	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/api/nodes/%d", nodes[0].ID), nil, token)
+	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/bayeos-api/nodes/%d", nodes[0].ID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -154,7 +154,7 @@ func TestSearchNodes(t *testing.T) {
 	// CREATE 3 Folder nodes and 1 Timeseries node with a common name prefix
 	for i := 0; i < 3; i++ {
 		node := model.Node{DisplayName: fmt.Sprintf("AntTarget-%d", i), Kind: "Folder", ParentID: user.HomeNodeID}
-		req, err := NewJWTRequest("POST", "/api/nodes", node, token)
+		req, err := NewJWTRequest("POST", "/bayeos-api/nodes", node, token)
 		require.NoError(t, err)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
@@ -162,14 +162,14 @@ func TestSearchNodes(t *testing.T) {
 	}
 
 	tsNode := model.Node{DisplayName: "AntTarget-99", Kind: "Timeseries", ParentID: user.HomeNodeID}
-	req, err := NewJWTRequest("POST", "/api/nodes", tsNode, token)
+	req, err := NewJWTRequest("POST", "/bayeos-api/nodes", tsNode, token)
 	require.NoError(t, err)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	// Search by Ant pattern across all kinds (kind omitted -> all kinds matched)
-	req, err = NewJWTRequest("GET", "/api/nodes/search?pattern=**/AntTarget*", nil, token)
+	req, err = NewJWTRequest("GET", "/bayeos-api/nodes/search?pattern=**/AntTarget*", nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -182,7 +182,7 @@ func TestSearchNodes(t *testing.T) {
 	require.Equal(t, 4, len(searchResult.Hits))
 
 	// Filter by kind=Folder -> only the 3 Folder nodes
-	req, err = NewJWTRequest("GET", "/api/nodes/search?pattern=**/AntTarget*&kind=Folder", nil, token)
+	req, err = NewJWTRequest("GET", "/bayeos-api/nodes/search?pattern=**/AntTarget*&kind=Folder", nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -194,7 +194,7 @@ func TestSearchNodes(t *testing.T) {
 	require.Equal(t, 3, len(searchResult.Hits))
 
 	// Filter by kind=Timeseries -> only 1 node
-	req, err = NewJWTRequest("GET", "/api/nodes/search?pattern=**/AntTarget*&kind=Timeseries", nil, token)
+	req, err = NewJWTRequest("GET", "/bayeos-api/nodes/search?pattern=**/AntTarget*&kind=Timeseries", nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -206,7 +206,7 @@ func TestSearchNodes(t *testing.T) {
 	require.Equal(t, 1, len(searchResult.Hits))
 
 	// Missing pattern is a bad request
-	req, err = NewJWTRequest("GET", "/api/nodes/search", nil, token)
+	req, err = NewJWTRequest("GET", "/bayeos-api/nodes/search", nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -221,7 +221,7 @@ func TestParentChildRelationship(t *testing.T) {
 
 	// CREATE child node
 	node := model.Node{DisplayName: "Krusty Files", ParentID: user.HomeNodeID}
-	req, err := NewJWTRequest("POST", "/api/nodes", node, token)
+	req, err := NewJWTRequest("POST", "/bayeos-api/nodes", node, token)
 	require.NoError(t, err)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -234,7 +234,7 @@ func TestParentChildRelationship(t *testing.T) {
 	require.Equal(t, user.HomeNodeID, child.ParentID)
 
 	// GET children of home node -> child is listed
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/children", user.HomeNodeID), nil, token)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d/children", user.HomeNodeID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -247,7 +247,7 @@ func TestParentChildRelationship(t *testing.T) {
 	require.Equal(t, child.ID, children[0].ID)
 
 	// GET parents of child node -> home node and the child itself are returned
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/parents", child.ID), nil, token)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d/parents", child.ID), nil, token)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -267,7 +267,7 @@ func TestParentChildRelationship(t *testing.T) {
 	// User without permission cannot read children of foreign node
 	otherToken, err := SignUp("sideshowbob", "secretpassword")
 	require.NoError(t, err)
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/children", user.HomeNodeID), nil, otherToken)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d/children", user.HomeNodeID), nil, otherToken)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)

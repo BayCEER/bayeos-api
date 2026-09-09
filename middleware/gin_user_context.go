@@ -10,7 +10,7 @@ import (
 const (
 	// CtxAuthUser is the authenticated model.User set by AuthUser.
 	CtxAuthUser = "AuthUser"
-	// CtxUserID is the :id path target of /api/users/:id routes. It is the
+	// CtxUserID is the :id path target of <context>/users/:id routes. It is the
 	// user being operated on, which is not necessarily the authenticated user.
 	CtxUserID = "UserID"
 	// CtxNodeID is the node id extracted from path/body/query or node auth.

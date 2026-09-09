@@ -20,7 +20,7 @@ func TestGetNodePrivsByUser(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user)
 
-	req, err := NewJWTRequest("GET", fmt.Sprintf("/api/users/%d/privileges", user.ID), nil, jt)
+	req, err := NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/users/%d/privileges", user.ID), nil, jt)
 	require.NoError(t, err)
 	require.NotNil(t, req)
 	w := httptest.NewRecorder()
@@ -44,7 +44,7 @@ func TestNodePrivilegeCRUD(t *testing.T) {
 
 	// CREATE privilege on grantor's home node
 	priv := model.NodePrivilege{GranteeID: grantee.ID, GrantorID: grantor.ID, Permission: model.READ_PERMISSION}
-	req, err := NewJWTRequest("POST", fmt.Sprintf("/api/nodes/%d/privileges", grantor.HomeNodeID), priv, grantorToken)
+	req, err := NewJWTRequest("POST", fmt.Sprintf("/bayeos-api/nodes/%d/privileges", grantor.HomeNodeID), priv, grantorToken)
 	require.NoError(t, err)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -59,7 +59,7 @@ func TestNodePrivilegeCRUD(t *testing.T) {
 	require.Equal(t, model.READ_PERMISSION, created.Permission)
 
 	// GET all privileges of the node -> created privilege is listed
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/privileges", grantor.HomeNodeID), nil, grantorToken)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d/privileges", grantor.HomeNodeID), nil, grantorToken)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -71,7 +71,7 @@ func TestNodePrivilegeCRUD(t *testing.T) {
 	require.Contains(t, privs, created)
 
 	// GET single privilege by id
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), nil, grantorToken)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), nil, grantorToken)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -84,14 +84,14 @@ func TestNodePrivilegeCRUD(t *testing.T) {
 
 	// UPDATE permission (read+write)
 	var patch = fmt.Appendf(nil, `{"permission": %d}`, model.READ_PERMISSION+model.WRITE_PERMISSION)
-	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), bytes.NewBuffer(patch), grantorToken)
+	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/bayeos-api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), bytes.NewBuffer(patch), grantorToken)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
 	// Verify updated permission
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), nil, grantorToken)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), nil, grantorToken)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -102,28 +102,28 @@ func TestNodePrivilegeCRUD(t *testing.T) {
 	require.Equal(t, model.READ_PERMISSION+model.WRITE_PERMISSION, got.Permission)
 
 	// DELETE privilege
-	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), nil, grantorToken)
+	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/bayeos-api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), nil, grantorToken)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
 	// DELETE again -> not found
-	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), nil, grantorToken)
+	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/bayeos-api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), nil, grantorToken)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusNotFound, w.Code)
 
 	// GET deleted privilege -> not found
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), nil, grantorToken)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d/privileges/%d", grantor.HomeNodeID, created.ID), nil, grantorToken)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusNotFound, w.Code)
 
 	// Foreign user without granted privileges is forbidden
-	req, err = NewJWTRequest("GET", fmt.Sprintf("/api/nodes/%d/privileges", grantor.HomeNodeID), nil, granteeToken)
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d/privileges", grantor.HomeNodeID), nil, granteeToken)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
