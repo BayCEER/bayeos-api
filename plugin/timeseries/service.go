@@ -22,6 +22,7 @@ type TimeseriesService interface {
 	Delete(ctx context.Context, id int32, userID int32) error
 
 	AddData(ctx context.Context, id int32, pts []DataPoint, userID int32) error
+	AddDataBatch(ctx context.Context, series []SeriesData, userID int32) error
 	UpdateStatus(ctx context.Context, id int32, pts []StatusPoint, userID int32) error
 	QueryData(ctx context.Context, id int32, q TimeseriesQuery, userID int32) (*TimeseriesData, error)
 	QueryDataBatch(ctx context.Context, q TimeseriesDataQuery, userID int32) (*TimeseriesBatchData, error)
@@ -116,6 +117,19 @@ func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []DataPoi
 		return err
 	}
 	return s.queries.Insert(ctx, id, pts)
+}
+
+// AddDataBatch writes points for multiple series in a single batch. Every
+// series id is validated first (it must exist, be a readable Timeseries and
+// the caller must have permission); if any series fails the whole batch
+// errors out and nothing is written.
+func (s *timeseriesService) AddDataBatch(ctx context.Context, series []SeriesData, userID int32) error {
+	for _, srs := range series {
+		if _, err := s.Get(ctx, srs.ID, userID); err != nil {
+			return err
+		}
+	}
+	return s.queries.InsertBatch(ctx, series)
 }
 
 func (s *timeseriesService) UpdateStatus(ctx context.Context, id int32, pts []StatusPoint, userID int32) error {

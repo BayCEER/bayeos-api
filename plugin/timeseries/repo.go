@@ -19,6 +19,7 @@ const (
 // questRepo and satisfied by the QuestDB client.
 type QuestRepo interface {
 	Insert(ctx context.Context, nodeID int32, pts []DataPoint) error
+	InsertBatch(ctx context.Context, series []SeriesData) error
 	UpsertStatusBatch(ctx context.Context, nodeID int32, pts []StatusPoint) error
 	Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int) ([]DataPoint, error)
 	QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, limit *int) ([]SeriesData, error)
@@ -57,6 +58,35 @@ func (r *questRepo) Insert(ctx context.Context, nodeID int32, pts []DataPoint) e
 	br := r.conn.SendBatch(ctx, batch)
 	defer br.Close()
 	for range pts {
+		if _, err := br.Exec(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// InsertBatch writes points for one or more series in a single batch. Each
+// SeriesData carries parallel timestamp/values arrays; the id is stored
+// verbatim as the series id.
+func (r *questRepo) InsertBatch(ctx context.Context, series []SeriesData) error {
+	ctx, span := r.span(ctx, "timeseries.insert_batch")
+	defer span.End()
+
+	batch := &pgx.Batch{}
+	for _, s := range series {
+		for i := range s.Ts {
+			batch.Queue(
+				"INSERT INTO series (id, ts, value) VALUES ($1, $2, $3)",
+				fmt.Sprintf("%d", s.ID), s.Ts[i], s.Values[i],
+			)
+		}
+	}
+	if batch.Len() == 0 {
+		return nil
+	}
+	br := r.conn.SendBatch(ctx, batch)
+	defer br.Close()
+	for batch.Len() > 0 {
 		if _, err := br.Exec(); err != nil {
 			return err
 		}

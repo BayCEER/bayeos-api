@@ -193,6 +193,12 @@ func (d TimeseriesData) MarshalJSON() ([]byte, error) {
 	return json.Marshal(payload)
 }
 
+// SeriesDataBatch is the body of POST /api/timeseries/data when writing
+// multiple series in one request.
+type SeriesDataBatch struct {
+	Series []SeriesData `json:"series"`
+}
+
 // TimeseriesStats holds statistical metadata computed from QuestDB.
 type TimeseriesStats struct {
 	Count        int64              `json:"count"`

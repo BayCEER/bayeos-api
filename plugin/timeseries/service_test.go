@@ -30,6 +30,15 @@ func (f *fakeQuestRepo) Insert(ctx context.Context, nodeID int32, pts []DataPoin
 	return nil
 }
 
+func (f *fakeQuestRepo) InsertBatch(ctx context.Context, series []SeriesData) error {
+	for _, s := range series {
+		for i := range s.Ts {
+			f.data[s.ID] = append(f.data[s.ID], DataPoint{Ts: s.Ts[i], Value: s.Values[i]})
+		}
+	}
+	return nil
+}
+
 func (f *fakeQuestRepo) UpsertStatusBatch(ctx context.Context, nodeID int32, pts []StatusPoint) error {
 	f.status[nodeID] = append(f.status[nodeID], pts...)
 	return nil
@@ -518,4 +527,40 @@ func TestUpdateStatusNotTimeseries(t *testing.T) {
 	err := svc.UpdateStatus(context.Background(), 1, []StatusPoint{{Ts: time.Now(), Value: 1, Status: 1}}, 1)
 	require.ErrorIs(t, err, ErrNotTimeseries)
 	require.Empty(t, r.status)
+}
+
+func TestAddDataBatch(t *testing.T) {
+	r := newFakeQuestRepo()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	series := []SeriesData{
+		{ID: 1, Ts: []time.Time{base}, Values: []float64{1.5}},
+		{ID: 2, Ts: []time.Time{base.Add(time.Hour)}, Values: []float64{2.5}},
+	}
+	// stubNodeService returns the same node (ID 1) for every id, so all series
+	// pass the Timeseries check and are inserted.
+	require.NoError(t, svc.AddDataBatch(context.Background(), series, 1))
+	require.Len(t, r.data[1], 1)
+	require.Equal(t, 1.5, r.data[1][0].Value)
+	require.Len(t, r.data[2], 1)
+	require.Equal(t, 2.5, r.data[2][0].Value)
+}
+
+func TestAddDataBatchNotTimeseriesFails(t *testing.T) {
+	r := newFakeQuestRepo()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// The stub returns a Folder for every id, so no series is a Timeseries.
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: "Folder", ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	series := []SeriesData{
+		{ID: 1, Ts: []time.Time{base}, Values: []float64{1.5}},
+	}
+	err := svc.AddDataBatch(context.Background(), series, 1)
+	require.ErrorIs(t, err, ErrNotTimeseries)
+	require.Empty(t, r.data)
 }

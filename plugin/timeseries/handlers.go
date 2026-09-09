@@ -139,6 +139,28 @@ func (h *Handlers) AddData(c *gin.Context) {
 	c.Status(http.StatusCreated)
 }
 
+func (h *Handlers) AddDataBatch(c *gin.Context) {
+	userID, ok := mw.AuthUserIDFromContext(c)
+	if !ok {
+		mw.AbortWithInternalError(c, "user id not found")
+		return
+	}
+	var req SeriesDataBatch
+	if err := c.ShouldBindJSON(&req); err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid request body")
+		return
+	}
+	if len(req.Series) == 0 {
+		mw.AbortWithBadRequestError(c, "at least one series is required")
+		return
+	}
+	if err := h.service.AddDataBatch(c.Request.Context(), req.Series, userID); err != nil {
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to insert data: %v", err))
+		return
+	}
+	c.Status(http.StatusCreated)
+}
+
 func (h *Handlers) UpdateStatus(c *gin.Context) {
 	id, err := strings.ParseStringToInt32(c.Param("id"))
 	if err != nil {
