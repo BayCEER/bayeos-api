@@ -33,7 +33,11 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-var Version = "DEVELOPMENT"
+var (
+	Version   = "DEVELOPMENT"
+	GitCommit = "unknown"
+	BuildDate = "unknown"
+)
 
 func main() {
 
@@ -44,7 +48,7 @@ func main() {
 		log.InitWithLevel(llevel)
 	}
 
-	log.Infof("starting BayEOS API version %s", Version)
+	log.Infof("starting BayEOS API version %s (commit %s, built %s)", Version, GitCommit, BuildDate)
 
 	shutdown, err := setupTelemetry(context.Background())
 	if err != nil {
@@ -100,8 +104,9 @@ func main() {
 		c.Data(http.StatusOK, "text/html; charset=utf-8", fmt.Appendf(nil, `<!DOCTYPE html>
 	<html lang="en"><head><meta charset="utf-8"><title>BayEOS API</title></head><body><h1>BayEOS API %s</h1>
 	<a href="/%s/assets/openapi/rapidoc.html">OpenAPI Documentation</a>
+	<p>version %s (commit %s, built %s)</p>
 	</body>
-	</html>`, Version, basePath))
+	</html>`, Version, basePath, Version, GitCommit, BuildDate))
 	})
 
 	// Open PG connection

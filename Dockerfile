@@ -15,7 +15,7 @@ ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
 RUN sed -i -e "s|__VERSION__|${VERSION}|g" -e "s|__COMMIT__|${COMMIT}|g" -e "s|__BUILD_DATE__|${BUILD_DATE}|g" assets/openapi/openapi.yaml
 
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.Version=${VERSION}" -o bayeos-api .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${COMMIT} -X main.BuildDate=${BUILD_DATE}" -o bayeos-api .
 
 # Run stage
 FROM alpine:latest
