@@ -2,6 +2,7 @@ get:
   summary: Get API version and build information
   tags:
     - "System"
+  security: []
   responses:
     "200":
       description: OK

@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
-	"html/template"
 	"net/http"
 	"net/url"
 	"os"
@@ -106,11 +104,6 @@ func main() {
 	basePath := resolveBasePath()
 	log.Infof("API context:%v", basePath)
 
-	indexTmpl, err := template.ParseFiles(mustGetEnv("WS_ASSETS_PATH") + "/index.html")
-	if err != nil {
-		log.Fatalf("failed to parse index template: %v", err)
-	}
-
 	r.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusTemporaryRedirect, "/"+basePath)
 	})
@@ -119,14 +112,24 @@ func main() {
 		c.JSON(http.StatusOK, build)
 	})
 
+	// Render the landing page
 	r.GET("/"+basePath, func(c *gin.Context) {
-		var buf bytes.Buffer
-		if err := indexTmpl.Execute(&buf, build); err != nil {
-			log.Errorf("failed to render index template: %v", err)
-			c.String(http.StatusInternalServerError, "failed to render index template")
-			return
-		}
-		c.Data(http.StatusOK, "text/html; charset=utf-8", buf.Bytes())
+		docsURL := "/" + basePath + "/assets/openapi/rapidoc.html"
+		html := `<!doctype html>
+		<html lang="en">
+		<head>
+			<meta charset="utf-8" />
+			<title>BayEOS API</title>
+		</head>
+		<body>
+			<h1>BayEOS API</h1>			
+			<p>Version: ` + build.Version + `</p>
+			<p>Commit: ` + build.GitCommit + `</p>
+			<p>Built: ` + build.BuildDate + `</p>
+			<a href="` + docsURL + `">OpenAPI Documentation</a>
+		</body>
+		</html>`
+		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
 	})
 
 	// Open PG connection

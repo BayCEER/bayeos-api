@@ -1,6 +1,7 @@
 type: object
 properties:
   ts:
+    description: Timestamp auto-detected string = ISO, integer = epoch µs
     oneOf:
       - type: string
         format: date-time
@@ -8,7 +9,6 @@ properties:
       - type: integer
         format: int64
         description: Epoch microseconds
-    description: Timestamp (auto-detected: string = ISO, integer = epoch µs)
   value:
     type: number
     format: float
@@ -17,5 +17,5 @@ required:
   - ts
   - value
 example:
-  ts: '2026-08-31T12:34:56.789Z'
+  ts: "2026-08-31T12:34:56.789Z"
   value: 23.5

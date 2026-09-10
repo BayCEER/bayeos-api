@@ -4,27 +4,25 @@ properties:
     type: integer
     description: Number of data points used
   first_ts:
-    type: string
+    type: [string, "null"]
     format: date-time
   last_ts:
-    type: string
+    type: [string, "null"]
     format: date-time
   min:
-    type: number
+    type: [number, "null"]
     format: double
   max:
-    type: number
+    type: [number, "null"]
     format: double
   mean:
-    type: number
+    type: [number, "null"]
     format: double
   stddev:
-    type: number
+    type: [number, "null"]
     format: double
-    nullable: true
   completeness:
-    type: object
-    nullable: true
+    type: [object, "null"]
     description: Present only when the node metadata has a resolution value
     properties:
       expected_count:
@@ -37,8 +35,7 @@ properties:
         type: number
         format: double
   gaps:
-    type: array
-    nullable: true
+    type: [array, "null"]
     description: >
       Present only when the node metadata has a resolution value. The longest
       intervals between consecutive samples that exceed twice the sampling

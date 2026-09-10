@@ -40,7 +40,10 @@ post:
                     type: array
                     items:
                       $ref: ../schema/TimeseriesDataPoint.yaml#/properties/ts
-                    description: Timestamps, parallel to values; each element is a TimeseriesDataPoint timestamp (auto-detected: string = ISO, integer = epoch µs)
+                    description: >
+                      Timestamps, parallel to values; each element is a
+                      TimeseriesDataPoint timestamp with auto-detected encoding:
+                      string = ISO, integer = epoch microseconds.
                   values:
                     type: array
                     items:
