@@ -36,6 +36,8 @@ components:
       description: UUID token as registered on node
 
 paths:
+  /version:
+    $ref: paths/version.yaml
   /auth/signin:
     $ref: paths/auth/signin.yaml
   /auth/signup:

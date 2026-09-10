@@ -5,9 +5,12 @@ post:
   description: >
     Inserts data points into several timeseries in a single request using a
     compact, column-oriented body in which each series reports its id once and
-    timestamps/values as parallel arrays. Every series id must be a Timeseries
-    the caller may write; if any series fails the permission or kind check the
-    whole request errors out and nothing is written.
+    timestamps/values as parallel arrays. Each timestamp in the ts arrays is a
+    TimeseriesDataPoint timestamp and may be encoded as an RFC3339 string or as
+    epoch microseconds; the encoding is detected automatically per timestamp.
+    Every series id must be a Timeseries the caller may write; if any series
+    fails the permission or kind check the whole request errors out and nothing
+    is written.
   security:
     - JWTAuth: []
   requestBody:
@@ -36,15 +39,25 @@ post:
                   ts:
                     type: array
                     items:
-                      type: string
-                      format: date-time
-                    description: Timestamps, parallel to values
+                      $ref: ../schema/TimeseriesDataPoint.yaml#/properties/ts
+                    description: Timestamps, parallel to values; each element is a TimeseriesDataPoint timestamp (auto-detected: string = ISO, integer = epoch µs)
                   values:
                     type: array
                     items:
                       type: number
                       format: double
                     description: Readings, parallel to ts
+  parameters:
+    - name: ignore_invalid_timestamps
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: false
+      description: >
+        When `true`, data points whose timestamps are invalid (before the year
+        1970 or more than 100 years in the future) are silently ignored instead
+        of being inserted.
   responses:
     "201":
       description: created

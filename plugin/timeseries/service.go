@@ -21,8 +21,8 @@ type TimeseriesService interface {
 	Update(ctx context.Context, id int32, fields map[string]interface{}, userID int32) error
 	Delete(ctx context.Context, id int32, userID int32) error
 
-	AddData(ctx context.Context, id int32, pts []DataPoint, userID int32) error
-	AddDataBatch(ctx context.Context, series []SeriesData, userID int32) error
+	AddData(ctx context.Context, id int32, pts []DataPoint, userID int32, ignoreInvalid bool) error
+	AddDataBatch(ctx context.Context, series []SeriesData, userID int32, ignoreInvalid bool) error
 	UpdateStatus(ctx context.Context, id int32, pts []StatusPoint, userID int32) error
 	QueryData(ctx context.Context, id int32, q TimeseriesQuery, userID int32) (*TimeseriesData, error)
 	QueryDataBatch(ctx context.Context, q TimeseriesDataQuery, userID int32) (*TimeseriesBatchData, error)
@@ -112,9 +112,12 @@ func (s *timeseriesService) Delete(ctx context.Context, id int32, userID int32) 
 	return s.nodes.DeleteNode(ctx, id)
 }
 
-func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []DataPoint, userID int32) error {
+func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []DataPoint, userID int32, ignoreInvalid bool) error {
 	if _, err := s.Get(ctx, id, userID); err != nil {
 		return err
+	}
+	if ignoreInvalid {
+		pts = filterInvalidDataPoints(pts)
 	}
 	return s.queries.Insert(ctx, id, pts)
 }
@@ -123,13 +126,56 @@ func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []DataPoi
 // series id is validated first (it must exist, be a readable Timeseries and
 // the caller must have permission); if any series fails the whole batch
 // errors out and nothing is written.
-func (s *timeseriesService) AddDataBatch(ctx context.Context, series []SeriesData, userID int32) error {
+func (s *timeseriesService) AddDataBatch(ctx context.Context, series []SeriesData, userID int32, ignoreInvalid bool) error {
 	for _, srs := range series {
 		if _, err := s.Get(ctx, srs.ID, userID); err != nil {
 			return err
 		}
 	}
+	if ignoreInvalid {
+		series = filterInvalidSeries(series)
+	}
 	return s.queries.InsertBatch(ctx, series)
+}
+
+// isInvalidTimestamp reports whether a timestamp lies outside the accepted
+// range: before the year 1970 or more than 100 years in the future.
+func isInvalidTimestamp(t time.Time) bool {
+	return t.Year() < 1970 || t.After(time.Now().AddDate(100, 0, 0))
+}
+
+// filterInvalidDataPoints drops data points whose timestamps are invalid.
+func filterInvalidDataPoints(pts []DataPoint) []DataPoint {
+	kept := make([]DataPoint, 0, len(pts))
+	for _, p := range pts {
+		if isInvalidTimestamp(p.Ts) {
+			continue
+		}
+		kept = append(kept, p)
+	}
+	return kept
+}
+
+// filterInvalidSeries drops data points with invalid timestamps from each
+// series, keeping the parallel ts/values arrays in lockstep.
+func filterInvalidSeries(series []SeriesData) []SeriesData {
+	out := make([]SeriesData, 0, len(series))
+	for i := range series {
+		s := series[i]
+		keptTs := make([]time.Time, 0, len(s.Ts))
+		keptVal := make([]float64, 0, len(s.Values))
+		for j := range s.Ts {
+			if isInvalidTimestamp(s.Ts[j]) {
+				continue
+			}
+			keptTs = append(keptTs, s.Ts[j])
+			keptVal = append(keptVal, s.Values[j])
+		}
+		s.Ts = keptTs
+		s.Values = keptVal
+		out = append(out, s)
+	}
+	return out
 }
 
 func (s *timeseriesService) UpdateStatus(ctx context.Context, id int32, pts []StatusPoint, userID int32) error {

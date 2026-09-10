@@ -7,15 +7,13 @@ set -e
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 FILE="$DIR/assets/openapi/openapi.yaml"
 
-VERSION="${VERSION:-dev}"
-COMMIT="${COMMIT:-unknown}"
-BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+VERSION="${VERSION:-unknown}"
+BUILD_DATE="${BUILD_DATE:-unknown}"
 
 TMP="$FILE.tmp"
 sed -e "s|__VERSION__|${VERSION}|g" \
-    -e "s|__COMMIT__|${COMMIT}|g" \
     -e "s|__BUILD_DATE__|${BUILD_DATE}|g" \
     "$FILE" > "$TMP"
 mv "$TMP" "$FILE"
 
-echo "rendered $FILE (version=$VERSION commit=$COMMIT build_date=$BUILD_DATE)"
+echo "rendered $FILE (version=$VERSION build_date=$BUILD_DATE)"

@@ -1,9 +1,14 @@
 type: object
 properties:
   ts:
-    type: string
-    format: date-time
-    description: Timestamp of the data point
+    oneOf:
+      - type: string
+        format: date-time
+        description: RFC3339 timestamp
+      - type: integer
+        format: int64
+        description: Epoch microseconds
+    description: Timestamp (auto-detected: string = ISO, integer = epoch µs)
   value:
     type: number
     format: float

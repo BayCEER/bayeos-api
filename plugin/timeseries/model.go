@@ -2,6 +2,7 @@ package timeseries
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -13,6 +14,23 @@ const Kind = "Timeseries"
 type DataPoint struct {
 	Ts    time.Time `json:"ts"`
 	Value float64   `json:"value"`
+}
+
+func (p *DataPoint) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Ts    json.RawMessage `json:"ts"`
+		Value float64         `json:"value"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	ts, err := decodeTimestamp(raw.Ts)
+	if err != nil {
+		return fmt.Errorf("invalid ts: %w", err)
+	}
+	p.Ts = ts
+	p.Value = raw.Value
+	return nil
 }
 
 // StatusPoint is a single (ts, value, status) record used to update the status
@@ -89,6 +107,28 @@ type SeriesData struct {
 	ID     int32       `json:"id"`
 	Ts     []time.Time `json:"ts"`
 	Values []float64   `json:"values"`
+}
+
+func (s *SeriesData) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		ID     int32             `json:"id"`
+		Ts     []json.RawMessage `json:"ts"`
+		Values []float64         `json:"values"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	s.ID = raw.ID
+	s.Values = raw.Values
+	s.Ts = make([]time.Time, len(raw.Ts))
+	for i, t := range raw.Ts {
+		ts, err := decodeTimestamp(t)
+		if err != nil {
+			return fmt.Errorf("ts at index %d: %w", i, err)
+		}
+		s.Ts[i] = ts
+	}
+	return nil
 }
 
 // TimeseriesBatchData is the compact return format of GET <context>/timeseries/data.
@@ -197,6 +237,23 @@ func (d TimeseriesData) MarshalJSON() ([]byte, error) {
 // multiple series in one request.
 type SeriesDataBatch struct {
 	Series []SeriesData `json:"series"`
+}
+
+// decodeTimestamp parses a JSON value as either an RFC3339 string or an
+// epoch-microseconds integer.
+func decodeTimestamp(raw json.RawMessage) (time.Time, error) {
+	if string(raw) == "null" {
+		return time.Time{}, fmt.Errorf("must be RFC3339 string or epoch microseconds")
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return time.Parse(time.RFC3339Nano, s)
+	}
+	var usec int64
+	if json.Unmarshal(raw, &usec) == nil {
+		return time.UnixMicro(usec), nil
+	}
+	return time.Time{}, fmt.Errorf("must be RFC3339 string or epoch microseconds")
 }
 
 // TimeseriesStats holds statistical metadata computed from QuestDB.

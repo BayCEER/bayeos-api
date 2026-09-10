@@ -3,6 +3,7 @@ package timeseries
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -542,7 +543,7 @@ func TestAddDataBatch(t *testing.T) {
 	}
 	// stubNodeService returns the same node (ID 1) for every id, so all series
 	// pass the Timeseries check and are inserted.
-	require.NoError(t, svc.AddDataBatch(context.Background(), series, 1))
+	require.NoError(t, svc.AddDataBatch(context.Background(), series, 1, false))
 	require.Len(t, r.data[1], 1)
 	require.Equal(t, 1.5, r.data[1][0].Value)
 	require.Len(t, r.data[2], 1)
@@ -560,7 +561,100 @@ func TestAddDataBatchNotTimeseriesFails(t *testing.T) {
 	series := []SeriesData{
 		{ID: 1, Ts: []time.Time{base}, Values: []float64{1.5}},
 	}
-	err := svc.AddDataBatch(context.Background(), series, 1)
+	err := svc.AddDataBatch(context.Background(), series, 1, false)
 	require.ErrorIs(t, err, ErrNotTimeseries)
 	require.Empty(t, r.data)
+}
+
+func TestAddDataIgnoreInvalidTimestamps(t *testing.T) {
+	r := newFakeQuestRepo()
+	valid := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	before1970 := time.Date(1969, 12, 31, 23, 59, 59, 0, time.UTC)
+	farFuture := time.Date(2300, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	pts := []DataPoint{
+		{Ts: valid, Value: 1},
+		{Ts: before1970, Value: 2},
+		{Ts: farFuture, Value: 3},
+	}
+	// Default (ignoreInvalid=false) keeps every point.
+	require.NoError(t, svc.AddData(context.Background(), 1, pts, 1, false))
+	require.Len(t, r.data[1], 3)
+
+	r.data[1] = nil
+	require.NoError(t, svc.AddData(context.Background(), 1, pts, 1, true))
+	require.Len(t, r.data[1], 1)
+	require.Equal(t, valid, r.data[1][0].Ts)
+	require.Equal(t, 1.0, r.data[1][0].Value)
+}
+
+func TestAddDataBatchIgnoreInvalidTimestamps(t *testing.T) {
+	r := newFakeQuestRepo()
+	valid := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	before1970 := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+	farFuture := time.Date(2300, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	series := []SeriesData{
+		{ID: 1, Ts: []time.Time{valid, before1970, farFuture}, Values: []float64{10, 20, 30}},
+	}
+	require.NoError(t, svc.AddDataBatch(context.Background(), series, 1, true))
+	require.Len(t, r.data[1], 1)
+	require.Equal(t, valid, r.data[1][0].Ts)
+	require.Equal(t, 10.0, r.data[1][0].Value)
+}
+
+func TestDataPointUnmarshalISO(t *testing.T) {
+	var dp DataPoint
+	err := json.Unmarshal([]byte(`{"ts":"2026-01-01T12:30:00Z","value":3.14}`), &dp)
+	require.NoError(t, err)
+	require.Equal(t, time.Date(2026, 1, 1, 12, 30, 0, 0, time.UTC), dp.Ts)
+	require.Equal(t, 3.14, dp.Value)
+}
+
+func TestDataPointUnmarshalEpoch(t *testing.T) {
+	var dp DataPoint
+	epoch := int64(1735689600000000)
+	err := json.Unmarshal([]byte(fmt.Sprintf(`{"ts":%d,"value":2.71}`, epoch)), &dp)
+	require.NoError(t, err)
+	require.Equal(t, time.UnixMicro(epoch), dp.Ts)
+	require.Equal(t, 2.71, dp.Value)
+}
+
+func TestDataPointUnmarshalInvalid(t *testing.T) {
+	var dp DataPoint
+	err := json.Unmarshal([]byte(`{"ts":true,"value":1}`), &dp)
+	require.Error(t, err)
+}
+
+func TestDataPointUnmarshalNull(t *testing.T) {
+	var dp DataPoint
+	err := json.Unmarshal([]byte(`{"ts":null,"value":1}`), &dp)
+	require.Error(t, err)
+}
+
+func TestSeriesDataUnmarshalISO(t *testing.T) {
+	var sd SeriesData
+	raw := `{"id":5,"ts":["2026-01-01T00:00:00Z","2026-01-02T00:00:00Z"],"values":[10,20]}`
+	require.NoError(t, json.Unmarshal([]byte(raw), &sd))
+	require.Equal(t, int32(5), sd.ID)
+	require.Len(t, sd.Ts, 2)
+	require.Equal(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), sd.Ts[0])
+	require.Equal(t, time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC), sd.Ts[1])
+	require.Equal(t, []float64{10, 20}, sd.Values)
+}
+
+func TestSeriesDataUnmarshalMixed(t *testing.T) {
+	var sd SeriesData
+	epoch := int64(1735689600000000)
+	raw := fmt.Sprintf(`{"id":3,"ts":["2026-01-01T00:00:00Z",%d],"values":[1,2]}`, epoch)
+	require.NoError(t, json.Unmarshal([]byte(raw), &sd))
+	require.Len(t, sd.Ts, 2)
+	require.Equal(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), sd.Ts[0])
+	require.Equal(t, time.UnixMicro(epoch), sd.Ts[1])
 }

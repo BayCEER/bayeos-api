@@ -1,0 +1,11 @@
+type: object
+properties:
+  Version:
+    type: string
+    example: "DEVELOPMENT"
+  GitCommit:
+    type: string
+    example: "unknown"
+  BuildDate:
+    type: string
+    example: "unknown"

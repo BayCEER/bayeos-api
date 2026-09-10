@@ -16,6 +16,17 @@ post:
     Existing data points with the same timestamp will be overwritten.
   security:
     - JWTAuth: []
+  parameters:
+    - name: ignore_invalid_timestamps
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: false
+      description: >
+        When `true`, data points whose timestamps are invalid (before the year
+        1970 or more than 100 years in the future) are silently ignored instead
+        of being inserted.
   requestBody:
     content:
       application/json:

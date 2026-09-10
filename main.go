@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/url"
 	"os"
@@ -39,6 +41,12 @@ var (
 	BuildDate = "unknown"
 )
 
+type BuildInfo struct {
+	Version   string
+	GitCommit string
+	BuildDate string
+}
+
 func main() {
 
 	level := mustGetEnv("WS_LOG_LEVEL")
@@ -48,7 +56,9 @@ func main() {
 		log.InitWithLevel(llevel)
 	}
 
-	log.Infof("starting BayEOS API version %s (commit %s, built %s)", Version, GitCommit, BuildDate)
+	build := BuildInfo{Version: Version, GitCommit: GitCommit, BuildDate: BuildDate}
+
+	log.Infof("starting BayEOS API version %s (commit %s, built %s)", build.Version, build.GitCommit, build.BuildDate)
 
 	shutdown, err := setupTelemetry(context.Background())
 	if err != nil {
@@ -96,17 +106,27 @@ func main() {
 	basePath := resolveBasePath()
 	log.Infof("API context:%v", basePath)
 
+	indexTmpl, err := template.ParseFiles(mustGetEnv("WS_ASSETS_PATH") + "/index.html")
+	if err != nil {
+		log.Fatalf("failed to parse index template: %v", err)
+	}
+
 	r.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusTemporaryRedirect, "/"+basePath)
 	})
 
+	r.GET("/"+basePath+"/version", func(c *gin.Context) {
+		c.JSON(http.StatusOK, build)
+	})
+
 	r.GET("/"+basePath, func(c *gin.Context) {
-		c.Data(http.StatusOK, "text/html; charset=utf-8", fmt.Appendf(nil, `<!DOCTYPE html>
-	<html lang="en"><head><meta charset="utf-8"><title>BayEOS API</title></head><body><h1>BayEOS API %s</h1>
-	<a href="/%s/assets/openapi/rapidoc.html">OpenAPI Documentation</a>
-	<p>version %s (commit %s, built %s)</p>
-	</body>
-	</html>`, Version, basePath, Version, GitCommit, BuildDate))
+		var buf bytes.Buffer
+		if err := indexTmpl.Execute(&buf, build); err != nil {
+			log.Errorf("failed to render index template: %v", err)
+			c.String(http.StatusInternalServerError, "failed to render index template")
+			return
+		}
+		c.Data(http.StatusOK, "text/html; charset=utf-8", buf.Bytes())
 	})
 
 	// Open PG connection

@@ -1,0 +1,13 @@
+get:
+  summary: Get API version and build information
+  tags:
+    - "System"
+  responses:
+    "200":
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/BuildInfo.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

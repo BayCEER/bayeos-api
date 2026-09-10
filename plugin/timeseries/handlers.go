@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	mw "github.com/BayCEER/bayeos/bayeos-api/middleware"
 	"github.com/BayCEER/bayeos/bayeos-api/strings"
@@ -128,7 +129,8 @@ func (h *Handlers) AddData(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid request body")
 		return
 	}
-	if err := h.service.AddData(c.Request.Context(), id, pts, userID); err != nil {
+	ignoreInvalid := queryBoolDefault(c, "ignore_invalid_timestamps", false)
+	if err := h.service.AddData(c.Request.Context(), id, pts, userID, ignoreInvalid); err != nil {
 		if errors.Is(err, ErrNotTimeseries) {
 			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
 			return
@@ -154,7 +156,8 @@ func (h *Handlers) AddDataBatch(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "at least one series is required")
 		return
 	}
-	if err := h.service.AddDataBatch(c.Request.Context(), req.Series, userID); err != nil {
+	ignoreInvalid := queryBoolDefault(c, "ignore_invalid_timestamps", false)
+	if err := h.service.AddDataBatch(c.Request.Context(), req.Series, userID, ignoreInvalid); err != nil {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to insert data: %v", err))
 		return
 	}
@@ -275,4 +278,18 @@ func (h *Handlers) GetStats(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, stats)
+}
+
+// queryBoolDefault returns the boolean query parameter key, or def when the
+// parameter is empty or cannot be parsed as a bool.
+func queryBoolDefault(c *gin.Context, key string, def bool) bool {
+	raw := c.DefaultQuery(key, "")
+	if raw == "" {
+		return def
+	}
+	b, err := strconv.ParseBool(raw)
+	if err != nil {
+		return def
+	}
+	return b
 }
