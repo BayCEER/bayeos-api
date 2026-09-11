@@ -192,7 +192,7 @@ func main() {
 			EmailAttr:       mustGetEnv("WS_LDAP_EMAIL_ATTRIBUTE"),
 		}
 		ldapRepo = repository.NewLdapRepoFromConfig(ldapConfig)
-		log.Infof("LDAP enabled")
+		log.Infof("LDAP authentication enabled")
 	}
 
 	log.Debugf("creating services")

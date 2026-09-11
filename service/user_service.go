@@ -73,9 +73,14 @@ func (s *userService) CreateUser(tx context.Context, cre model.SignUpCredentials
 			return err
 		}
 
+		hash, err := s.encodeMD5(cre.Password)
+		if err != nil {
+			return fmt.Errorf("failed to encode MD5 password for user:%s", cre.DisplayName)
+		}
+
 		// Create user
 		u = model.User{DisplayName: cre.DisplayName, EmailAddress: cre.EmailAddress, SignInName: cre.SignInName,
-			PasswordHash: s.encodePassword(cre.Password), HomeNodeID: node.ID}
+			PasswordHash: hash, HomeNodeID: node.ID}
 		if err := repo.CreateUser(tx, &u); err != nil {
 			return err
 		}
@@ -99,7 +104,12 @@ func (s *userService) DeleteUser(ctx context.Context, id int32) error {
 }
 
 func (s *userService) SetPassword(ctx context.Context, sc model.SignInCredentials) error {
-	return s.sqlRepo.UpdatePasswordHash(ctx, sc.Name, s.encodePassword(sc.Password))
+	if hash, err := s.encodeMD5(sc.Password); err != nil {
+		return fmt.Errorf("failed to encode MD5 password for user:%s", sc.Name)
+	} else {
+		return s.sqlRepo.UpdatePasswordHash(ctx, sc.Name, hash)
+	}
+
 }
 
 func (s *userService) GetUsers(ctx context.Context, ids []int32) ([]model.User, error) {
@@ -137,16 +147,45 @@ func (s *userService) SignIn(ctx context.Context, cre model.SignInCredentials) (
 	u, err := s.sqlRepo.FindUserBySignInName(ctx, cre.Name)
 	if err == nil {
 		// User exists
+
 		// Try local auth
-		localAuth := u.PasswordHash == s.encodePassword(cre.Password)
+		localAuth := false
+		if len(u.PasswordHash) == 32 {
+			if hash, err := s.encodeMD5(cre.Password); err == nil {
+				localAuth = u.PasswordHash == hash
+			} else {
+				return model.User{}, fmt.Errorf("failed to encode MD5 password for user:%s", u.SignInName)
+			}
+
+		} else if len(u.PasswordHash) == 13 {
+			// Upgrade from DES hash to MD5 hash on first successful login
+			if hash, err := s.encodeDES(cre.Password, u.PasswordHash); err != nil {
+				return model.User{}, fmt.Errorf("failed to encode DES hash for user:%s", u.SignInName)
+			} else {
+				localAuth = u.PasswordHash == hash
+				// DES hash -- Update to MD5 hash when user signs in successfully
+				if localAuth {
+					// Update to MD5 hash
+					if hash, err = s.encodeMD5(cre.Password); err != nil {
+						return model.User{}, fmt.Errorf("failed to md5 encode password for user:%s", u.SignInName)
+					}
+					if err := s.sqlRepo.UpdatePasswordHash(ctx, u.SignInName, hash); err != nil {
+						return model.User{}, fmt.Errorf("failed to update password hash for user:%s", u.SignInName)
+					}
+				}
+			}
+
+		}
+
 		// Try ldap auth
 		ldapAuth := false
-		if s.ldapRepo.Enabled() {
+		if s.ldapRepo.Enabled() && !localAuth {
 			if b, err := s.ldapRepo.Authenticate(cre.Name, cre.Password); err == nil && b {
 				// LDAP auth success
 				ldapAuth = true
 			}
 		}
+
 		if localAuth || ldapAuth {
 			if err = s.sqlRepo.UpdateUserFieldByID(ctx, u.ID, "last_sign_in_time", time.Now()); err != nil {
 				return model.User{}, err
@@ -217,8 +256,25 @@ func (s *userService) DeleteUserImage(ctx context.Context, id int32) error {
 	return s.sqlRepo.DeleteUserImageByID(ctx, id)
 }
 
-func (s *userService) encodePassword(password string) string {
+func (s *userService) encodeMD5(str string) (string, error) {
 	h := md5.New()
-	io.WriteString(h, password)
-	return hex.EncodeToString(h.Sum(nil))
+	n, err := io.WriteString(h, str)
+	if err != nil {
+		return "", fmt.Errorf("failed to write hash: %v", err)
+	}
+	if n != len(str) {
+		return "", fmt.Errorf("incomplete write to hash: wrote %d bytes, expected %d bytes", n, len(str))
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func (s *userService) encodeDES(str string, salt string) (string, error) {
+	if len(str) < 2 {
+		return "", errors.New("string length too short")
+	}
+	hash, err := CryptDES(str, salt)
+	if err != nil {
+		return "", errors.New("failed to encode string with DES")
+	}
+	return hash, nil
 }
