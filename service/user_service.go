@@ -183,6 +183,8 @@ func (s *userService) SignIn(ctx context.Context, cre model.SignInCredentials) (
 			if b, err := s.ldapRepo.Authenticate(cre.Name, cre.Password); err == nil && b {
 				// LDAP auth success
 				ldapAuth = true
+			} else {
+				return model.User{}, fmt.Errorf("failed to authenticate user:%s via LDAP: %v", u.SignInName, err)
 			}
 		}
 
