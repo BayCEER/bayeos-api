@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -9,8 +10,8 @@ import (
 )
 
 type IDTokenService interface {
-	CreateToken(u model.User) (string, error)
-	ValidateToken(token string) (model.User, error)
+	CreateToken(ctx context.Context, u model.User) (string, error)
+	ValidateToken(ctx context.Context, token string) (model.User, error)
 }
 
 type idTokenService struct {
@@ -35,7 +36,11 @@ func NewTokenService(c *TSConfig) IDTokenService {
 	}
 }
 
-func (s *idTokenService) CreateToken(u model.User) (string, error) {
+func (s *idTokenService) CreateToken(ctx context.Context, u model.User) (ss string, err error) {
+	ctx, span := withServiceSpan(ctx, "id_token.create")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, u.ID)
+
 	unixTime := time.Now().Unix()
 	tokenExp := unixTime + int64(s.ExpirationSecs)
 	claims := idTokenCustomClaims{
@@ -46,17 +51,19 @@ func (s *idTokenService) CreateToken(u model.User) (string, error) {
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	ss, err := token.SignedString([]byte(s.APIKey))
+	ss, err = token.SignedString([]byte(s.APIKey))
 	return ss, err
 }
 
-func (s *idTokenService) ValidateToken(tokenString string) (model.User, error) {
+func (s *idTokenService) ValidateToken(ctx context.Context, tokenString string) (user model.User, err error) {
+	ctx, span := withServiceSpan(ctx, "id_token.validate")
+	defer func() { endServiceSpan(span, err) }()
+
 	claims := &idTokenCustomClaims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		return []byte(s.APIKey), nil
 	})
 
-	user := model.User{}
 	if err != nil {
 		return user, err
 	}

@@ -24,19 +24,31 @@ func NewNodeTokenService(sqlRepo repository.SqlRepo) NodeTokenService {
 	}
 }
 
-func (s *nodeTokenService) GetNodeToken(ctx context.Context, id int32) (model.NodeToken, error) {
+func (s *nodeTokenService) GetNodeToken(ctx context.Context, id int32) (t model.NodeToken, err error) {
+	ctx, span := withServiceSpan(ctx, "node_token.get")
+	defer func() { endServiceSpan(span, err) }()
+
 	return s.sqlRepo.FindNodeTokenByID(ctx, id)
 }
 
-func (s *nodeTokenService) CreateNodeToken(ctx context.Context, e *model.NodeToken) error {
+func (s *nodeTokenService) CreateNodeToken(ctx context.Context, e *model.NodeToken) (err error) {
+	ctx, span := withServiceSpan(ctx, "node_token.create")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, e.NodeID)
+
 	return s.sqlRepo.CreateNodeToken(ctx, e)
 }
 
-func (s *nodeTokenService) DeleteNodeToken(ctx context.Context, id int32) error {
+func (s *nodeTokenService) DeleteNodeToken(ctx context.Context, id int32) (err error) {
+	ctx, span := withServiceSpan(ctx, "node_token.delete")
+	defer func() { endServiceSpan(span, err) }()
+
 	return s.sqlRepo.DeleteNodeTokenByID(ctx, id)
 }
 
-func (s *nodeTokenService) UpdateNodeToken(ctx context.Context, id int32, fields *map[string]interface{}) error {
+func (s *nodeTokenService) UpdateNodeToken(ctx context.Context, id int32, fields *map[string]interface{}) (err error) {
+	ctx, span := withServiceSpan(ctx, "node_token.update")
+	defer func() { endServiceSpan(span, err) }()
 
 	if err := s.sqlRepo.Do(ctx, func(repo repository.SqlRepo) error {
 		for k, v := range *fields {

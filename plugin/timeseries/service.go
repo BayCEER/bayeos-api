@@ -41,8 +41,13 @@ func NewTimeseriesService(nodes service.NodeService, privs service.NodePrivServi
 	return &timeseriesService{nodes: nodes, privs: privs, queries: queries}
 }
 
-func (s *timeseriesService) Create(ctx context.Context, cre TimeseriesCreate, baseNodeID int32, userID int32) (model.Node, error) {
-	node := model.Node{Kind: Kind}
+func (s *timeseriesService) Create(ctx context.Context, cre TimeseriesCreate, baseNodeID int32, userID int32) (node model.Node, err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.create")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, userID)
+	setNodeID(span, baseNodeID)
+
+	node = model.Node{Kind: Kind}
 	if cre.DisplayName != "" {
 		node.DisplayName = cre.DisplayName
 	}
@@ -83,8 +88,13 @@ func (s *timeseriesService) Create(ctx context.Context, cre TimeseriesCreate, ba
 	return node, nil
 }
 
-func (s *timeseriesService) Get(ctx context.Context, id int32, userID int32) (model.Node, error) {
-	n, err := s.nodes.GetNode(ctx, id, userID)
+func (s *timeseriesService) Get(ctx context.Context, id int32, userID int32) (n model.Node, err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.get")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+	setUserID(span, userID)
+
+	n, err = s.nodes.GetNode(ctx, id, userID)
 	if err != nil {
 		return model.Node{}, err
 	}
@@ -94,7 +104,12 @@ func (s *timeseriesService) Get(ctx context.Context, id int32, userID int32) (mo
 	return n, nil
 }
 
-func (s *timeseriesService) Update(ctx context.Context, id int32, fields map[string]interface{}, userID int32) error {
+func (s *timeseriesService) Update(ctx context.Context, id int32, fields map[string]interface{}, userID int32) (err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.update")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+	setUserID(span, userID)
+
 	n, err := s.Get(ctx, id, userID)
 	if err != nil {
 		return err
@@ -103,7 +118,12 @@ func (s *timeseriesService) Update(ctx context.Context, id int32, fields map[str
 	return s.nodes.UpdateNode(ctx, id, &fields)
 }
 
-func (s *timeseriesService) Delete(ctx context.Context, id int32, userID int32) error {
+func (s *timeseriesService) Delete(ctx context.Context, id int32, userID int32) (err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.delete")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+	setUserID(span, userID)
+
 	if _, err := s.Get(ctx, id, userID); err != nil {
 		return err
 	}
@@ -112,7 +132,12 @@ func (s *timeseriesService) Delete(ctx context.Context, id int32, userID int32) 
 	return s.nodes.DeleteNode(ctx, id)
 }
 
-func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []DataPoint, userID int32, ignoreInvalid bool) error {
+func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []DataPoint, userID int32, ignoreInvalid bool) (err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.add_data")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+	setUserID(span, userID)
+
 	if _, err := s.Get(ctx, id, userID); err != nil {
 		return err
 	}
@@ -126,7 +151,11 @@ func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []DataPoi
 // series id is validated first (it must exist, be a readable Timeseries and
 // the caller must have permission); if any series fails the whole batch
 // errors out and nothing is written.
-func (s *timeseriesService) AddDataBatch(ctx context.Context, series []SeriesData, userID int32, ignoreInvalid bool) error {
+func (s *timeseriesService) AddDataBatch(ctx context.Context, series []SeriesData, userID int32, ignoreInvalid bool) (err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.add_data_batch")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, userID)
+
 	for _, srs := range series {
 		if _, err := s.Get(ctx, srs.ID, userID); err != nil {
 			return err
@@ -178,14 +207,24 @@ func filterInvalidSeries(series []SeriesData) []SeriesData {
 	return out
 }
 
-func (s *timeseriesService) UpdateStatus(ctx context.Context, id int32, pts []StatusPoint, userID int32) error {
+func (s *timeseriesService) UpdateStatus(ctx context.Context, id int32, pts []StatusPoint, userID int32) (err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.update_status")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+	setUserID(span, userID)
+
 	if _, err := s.Get(ctx, id, userID); err != nil {
 		return err
 	}
 	return s.queries.UpsertStatusBatch(ctx, id, pts)
 }
 
-func (s *timeseriesService) QueryData(ctx context.Context, id int32, q TimeseriesQuery, userID int32) (*TimeseriesData, error) {
+func (s *timeseriesService) QueryData(ctx context.Context, id int32, q TimeseriesQuery, userID int32) (data *TimeseriesData, err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.query")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+	setUserID(span, userID)
+
 	if _, err := s.Get(ctx, id, userID); err != nil {
 		return nil, err
 	}
@@ -212,7 +251,11 @@ func (s *timeseriesService) QueryData(ctx context.Context, id int32, q Timeserie
 	return newTimeseriesData(q.SampleInterval, sampleFunc, series, tsType), nil
 }
 
-func (s *timeseriesService) QueryDataBatch(ctx context.Context, q TimeseriesDataQuery, userID int32) (*TimeseriesBatchData, error) {
+func (s *timeseriesService) QueryDataBatch(ctx context.Context, q TimeseriesDataQuery, userID int32) (data *TimeseriesBatchData, err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.query_batch")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, userID)
+
 	tsType, err := normalizeTsType(q.TsType)
 	if err != nil {
 		return nil, err
@@ -235,7 +278,7 @@ func (s *timeseriesService) QueryDataBatch(ctx context.Context, q TimeseriesData
 	if err != nil {
 		return nil, err
 	}
-	data := &TimeseriesBatchData{Series: series, TsType: tsType}
+	data = &TimeseriesBatchData{Series: series, TsType: tsType}
 	if q.SampleInterval != "" {
 		data.SampleInterval = q.SampleInterval
 		data.SampleFunc = sampleFunc
@@ -286,13 +329,18 @@ func newTimeseriesData(interval, sampleFunc string, series []SeriesData, tsType 
 	return data
 }
 
-func (s *timeseriesService) GetStats(ctx context.Context, id int32, q TimeseriesStatsQuery, userID int32) (*TimeseriesStats, error) {
+func (s *timeseriesService) GetStats(ctx context.Context, id int32, q TimeseriesStatsQuery, userID int32) (stats *TimeseriesStats, err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.get_stats")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+	setUserID(span, userID)
+
 	n, err := s.Get(ctx, id, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	stats, err := s.queries.ComputeStats(ctx, id, q.From, q.To, q.Agg)
+	stats, err = s.queries.ComputeStats(ctx, id, q.From, q.To, q.Agg)
 	if err != nil {
 		return nil, err
 	}

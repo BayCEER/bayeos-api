@@ -51,25 +51,25 @@ func NewUserService(sqlRepo repository.SqlRepo, ldapRepo repository.LdapRepo) Us
 	}
 }
 
-func (s *userService) CreateUser(tx context.Context, cre model.SignUpCredentials) (model.User, error) {
+func (s *userService) CreateUser(tx context.Context, cre model.SignUpCredentials) (u model.User, err error) {
+	ctx, span := withServiceSpan(tx, "users.create")
+	defer func() { endServiceSpan(span, err) }()
 
 	if len(cre.Password) < MIN_PASSWORD_LENGTH {
 		return model.User{}, errors.New("password length too short")
 	}
 
-	var u model.User
-
-	if err := s.sqlRepo.Do(tx, func(repo repository.SqlRepo) error {
+	if err := s.sqlRepo.Do(ctx, func(repo repository.SqlRepo) error {
 
 		// Get users home folder
-		homeNode, err := repo.FindNodeByID(tx, model.HOME_ID)
+		homeNode, err := repo.FindNodeByID(ctx, model.HOME_ID)
 		if err != nil {
 			return err
 		}
 
 		// Create new folder, raises an error if a node with the same name already exists !
 		node := model.Node{DisplayName: cre.DisplayName, ParentID: homeNode.ID, Kind: "Folder"}
-		if err := repo.CreateNode(tx, &node); err != nil {
+		if err := repo.CreateNode(ctx, &node); err != nil {
 			return err
 		}
 
@@ -81,13 +81,13 @@ func (s *userService) CreateUser(tx context.Context, cre model.SignUpCredentials
 		// Create user
 		u = model.User{DisplayName: cre.DisplayName, EmailAddress: cre.EmailAddress, SignInName: cre.SignInName,
 			PasswordHash: hash, HomeNodeID: node.ID}
-		if err := repo.CreateUser(tx, &u); err != nil {
+		if err := repo.CreateUser(ctx, &u); err != nil {
 			return err
 		}
 
 		// Grant privilege to user
 		p := model.NewNodePrivilege(node.ID, u.ID, u.ID)
-		if err := repo.CreateNodePriv(tx, &p); err != nil {
+		if err := repo.CreateNodePriv(ctx, &p); err != nil {
 			return err
 		}
 
@@ -99,11 +99,18 @@ func (s *userService) CreateUser(tx context.Context, cre model.SignUpCredentials
 	return u, nil
 }
 
-func (s *userService) DeleteUser(ctx context.Context, id int32) error {
+func (s *userService) DeleteUser(ctx context.Context, id int32) (err error) {
+	ctx, span := withServiceSpan(ctx, "users.delete")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, id)
+
 	return s.sqlRepo.DeleteUserByID(ctx, id)
 }
 
-func (s *userService) SetPassword(ctx context.Context, sc model.SignInCredentials) error {
+func (s *userService) SetPassword(ctx context.Context, sc model.SignInCredentials) (err error) {
+	ctx, span := withServiceSpan(ctx, "users.set_password")
+	defer func() { endServiceSpan(span, err) }()
+
 	if hash, err := s.encodeMD5(sc.Password); err != nil {
 		return fmt.Errorf("failed to encode MD5 password for user:%s", sc.Name)
 	} else {
@@ -112,18 +119,27 @@ func (s *userService) SetPassword(ctx context.Context, sc model.SignInCredential
 
 }
 
-func (s *userService) GetUsers(ctx context.Context, ids []int32) ([]model.User, error) {
+func (s *userService) GetUsers(ctx context.Context, ids []int32) (users []model.User, err error) {
+	ctx, span := withServiceSpan(ctx, "users.list")
+	defer func() { endServiceSpan(span, err) }()
+
 	if len(ids) != 0 {
 		return s.sqlRepo.FindUsersByIDs(ctx, ids)
 	}
 	return s.sqlRepo.FindAllUsers(ctx)
 }
 
-func (s *userService) GetAllUsers(ctx context.Context) ([]model.User, error) {
+func (s *userService) GetAllUsers(ctx context.Context) (users []model.User, err error) {
+	ctx, span := withServiceSpan(ctx, "users.list_all")
+	defer func() { endServiceSpan(span, err) }()
+
 	return s.sqlRepo.FindAllUsers(ctx)
 }
 
-func (s *userService) UpdateUser(ctx context.Context, id int32, fields *map[string]interface{}) error {
+func (s *userService) UpdateUser(ctx context.Context, id int32, fields *map[string]interface{}) (err error) {
+	ctx, span := withServiceSpan(ctx, "users.update")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, id)
 
 	if err := s.sqlRepo.Do(ctx, func(repo repository.SqlRepo) error {
 		for k, v := range *fields {
@@ -139,12 +155,19 @@ func (s *userService) UpdateUser(ctx context.Context, id int32, fields *map[stri
 
 }
 
-func (s *userService) GetUser(ctx context.Context, id int32) (model.User, error) {
+func (s *userService) GetUser(ctx context.Context, id int32) (u model.User, err error) {
+	ctx, span := withServiceSpan(ctx, "users.get")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, id)
+
 	return s.sqlRepo.FindUserByID(ctx, id)
 }
 
-func (s *userService) SignIn(ctx context.Context, cre model.SignInCredentials) (model.User, error) {
-	u, err := s.sqlRepo.FindUserBySignInName(ctx, cre.Name)
+func (s *userService) SignIn(ctx context.Context, cre model.SignInCredentials) (u model.User, err error) {
+	ctx, span := withServiceSpan(ctx, "users.sign_in")
+	defer func() { endServiceSpan(span, err) }()
+
+	u, err = s.sqlRepo.FindUserBySignInName(ctx, cre.Name)
 	if err == nil {
 		// User exists
 
@@ -199,7 +222,9 @@ func (s *userService) SignIn(ctx context.Context, cre model.SignInCredentials) (
 	return model.User{}, errors.New("user authentication failed")
 }
 
-func (s *userService) SignOut(ctx context.Context, cre model.SignInCredentials) error {
+func (s *userService) SignOut(ctx context.Context, cre model.SignInCredentials) (err error) {
+	ctx, span := withServiceSpan(ctx, "users.sign_out")
+	defer func() { endServiceSpan(span, err) }()
 
 	u, err := s.SignIn(ctx, cre)
 	if err != nil {
@@ -226,7 +251,10 @@ func (s *userService) SignOut(ctx context.Context, cre model.SignInCredentials) 
 	return nil
 }
 
-func (s *userService) CreateUserImage(ctx context.Context, id int32, imageData io.Reader) error {
+func (s *userService) CreateUserImage(ctx context.Context, id int32, imageData io.Reader) (err error) {
+	ctx, span := withServiceSpan(ctx, "users.create_image")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, id)
 
 	data, err := io.ReadAll(io.LimitReader(imageData, MaxUserImageBytes+1))
 	if err != nil {
@@ -250,11 +278,19 @@ func (s *userService) CreateUserImage(ctx context.Context, id int32, imageData i
 	return nil
 }
 
-func (s *userService) GetUserImage(ctx context.Context, id int32) ([]byte, string, error) {
+func (s *userService) GetUserImage(ctx context.Context, id int32) (data []byte, mimeType string, err error) {
+	ctx, span := withServiceSpan(ctx, "users.get_image")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, id)
+
 	return s.sqlRepo.FindUserImageByID(ctx, id)
 }
 
-func (s *userService) DeleteUserImage(ctx context.Context, id int32) error {
+func (s *userService) DeleteUserImage(ctx context.Context, id int32) (err error) {
+	ctx, span := withServiceSpan(ctx, "users.delete_image")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, id)
+
 	return s.sqlRepo.DeleteUserImageByID(ctx, id)
 }
 

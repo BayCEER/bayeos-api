@@ -157,7 +157,7 @@ func NewJWTReaderRequest(method string, url string, body io.Reader, token string
 }
 
 func CurrentUser(jwtToken string) (model.User, error) {
-	return IDTokenService.ValidateToken(jwtToken)
+	return IDTokenService.ValidateToken(context.Background(), jwtToken)
 }
 
 func SignIn(name string, password string) (string, error) {

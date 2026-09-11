@@ -9,6 +9,7 @@ import (
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/BayCEER/bayeos/bayeos-api/repository"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type NodeService interface {
@@ -46,7 +47,7 @@ func (s *nodeService) getUserReadableNodes(ctx context.Context, nodes []model.No
 	readableNodes := []model.Node{}
 	for _, node := range nodes {
 		if p, err := s.sqlRepo.GetNodePermission(ctx, node.ID, userID); err != nil {
-			return []model.Node{}, errors.New("failed to get node permission")
+			return []model.Node{}, fmt.Errorf("failed to get node permission: %w", err)
 		} else {
 			if model.Readable(p) {
 				node.Permission = p
@@ -57,24 +58,29 @@ func (s *nodeService) getUserReadableNodes(ctx context.Context, nodes []model.No
 	return readableNodes, nil
 }
 
-func (s *nodeService) GetNode(ctx context.Context, id int32, userID int32) (model.Node, error) {
+func (s *nodeService) GetNode(ctx context.Context, id int32, userID int32) (n model.Node, err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.get")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+	setUserID(span, userID)
 
-	n, err := s.sqlRepo.FindNodeByID(ctx, id)
+	n, err = s.sqlRepo.FindNodeByID(ctx, id)
 	if err != nil {
 		return model.Node{}, fmt.Errorf("node with id %d not found: %w", id, err)
 	}
 
 	if p, err := s.sqlRepo.GetNodePermission(ctx, n.ID, userID); err != nil {
-		return model.Node{}, errors.New("failed to get node permission")
+		return model.Node{}, fmt.Errorf("failed to get node permission: %w", err)
 	} else {
 		n.Permission = p
 		return n, nil
 	}
 }
 
-func (s *nodeService) GetNodes(ctx context.Context, ids []int32, userID int32) ([]model.Node, error) {
-	var nodes []model.Node
-	var err error
+func (s *nodeService) GetNodes(ctx context.Context, ids []int32, userID int32) (nodes []model.Node, err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.list")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, userID)
 
 	if len(ids) == 0 {
 		nodes, err = s.sqlRepo.FindNodesByIDs(ctx, []int32{model.ROOT_ID})
@@ -87,17 +93,26 @@ func (s *nodeService) GetNodes(ctx context.Context, ids []int32, userID int32) (
 	return s.getUserReadableNodes(ctx, nodes, userID)
 }
 
-func (s *nodeService) GetNodeChildren(ctx context.Context, id int32, userID int32) ([]model.Node, error) {
-	chs, err := s.sqlRepo.FindNodeChildrenByID(ctx, id)
+func (s *nodeService) GetNodeChildren(ctx context.Context, id int32, userID int32) (chs []model.Node, err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.children")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+	setUserID(span, userID)
+
+	chs, err = s.sqlRepo.FindNodeChildrenByID(ctx, id)
 	if err != nil {
 		return []model.Node{}, fmt.Errorf("children of node with id %d not found: %w", id, err)
 	}
 	return s.getUserReadableNodes(ctx, chs, userID)
 }
 
-func (s *nodeService) GetNodeParents(ctx context.Context, id int32, userID int32) ([]model.Node, error) {
+func (s *nodeService) GetNodeParents(ctx context.Context, id int32, userID int32) (parents []model.Node, err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.parents")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+	setUserID(span, userID)
 
-	parents, err := s.sqlRepo.FindNodeParentsByID(ctx, id)
+	parents, err = s.sqlRepo.FindNodeParentsByID(ctx, id)
 	if err != nil {
 		return []model.Node{}, fmt.Errorf("parents of node with id %d not found: %w", id, err)
 	}
@@ -105,23 +120,36 @@ func (s *nodeService) GetNodeParents(ctx context.Context, id int32, userID int32
 	return s.getUserReadableNodes(ctx, parents, userID)
 }
 
-func (s *nodeService) GetNodeTokens(ctx context.Context, id int32) ([]model.NodeToken, error) {
-	tokens, err := s.sqlRepo.FindNodeTokensByNodeID(ctx, id)
+func (s *nodeService) GetNodeTokens(ctx context.Context, id int32) (tokens []model.NodeToken, err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.tokens")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+
+	tokens, err = s.sqlRepo.FindNodeTokensByNodeID(ctx, id)
 	if err != nil {
 		return []model.NodeToken{}, fmt.Errorf("tokens of node with id %d not found: %w", id, err)
 	}
 	return tokens, nil
 }
 
-func (s *nodeService) GetNodePrivs(ctx context.Context, id int32) ([]model.NodePrivilege, error) {
-	privs, err := s.sqlRepo.FindNodePrivsByNodeID(ctx, id)
+func (s *nodeService) GetNodePrivs(ctx context.Context, id int32) (privs []model.NodePrivilege, err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.privileges")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+
+	privs, err = s.sqlRepo.FindNodePrivsByNodeID(ctx, id)
 	if err != nil {
 		return []model.NodePrivilege{}, fmt.Errorf("privileges of node with id %d not found: %w", id, err)
 	}
 	return privs, nil
 }
 
-func (s *nodeService) FindNodesByAntPath(ctx context.Context, pattern string, kind string, skip int, limit int, userID int32) (int32, []model.Node, error) {
+func (s *nodeService) FindNodesByAntPath(ctx context.Context, pattern string, kind string, skip int, limit int, userID int32) (total int32, nodes []model.Node, err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.search")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, userID)
+	span.SetAttributes(attribute.String("bayeos.search_pattern", pattern))
+
 	regex, err := antToRegex(pattern)
 	if err != nil {
 		return 0, nil, err
@@ -129,14 +157,13 @@ func (s *nodeService) FindNodesByAntPath(ctx context.Context, pattern string, ki
 
 	hits, err := s.sqlRepo.FindNodesByAntPath(ctx, regex, kind)
 	if err != nil {
-		return 0, nil, errors.New("failed to find nodes")
+		return 0, nil, fmt.Errorf("failed to find nodes: %w", err)
 	}
 
-	nodes := []model.Node{}
-	var total int32
+	nodes = []model.Node{}
 	for i, hit := range hits {
 		if p, err := s.sqlRepo.GetNodePermission(ctx, hit.ID, userID); err != nil {
-			return 0, nil, errors.New("failed to get node permission")
+			return 0, nil, fmt.Errorf("failed to get node permission: %w", err)
 		} else {
 			if model.Readable(p) {
 				hit.Permission = p
@@ -150,13 +177,18 @@ func (s *nodeService) FindNodesByAntPath(ctx context.Context, pattern string, ki
 	return total, nodes, nil
 }
 
-func (s *nodeService) CreateNode(ctx context.Context, node *model.Node, userID int32) error {
+func (s *nodeService) CreateNode(ctx context.Context, node *model.Node, userID int32) (err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.create")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, userID)
+
 	if err := s.sqlRepo.CreateNode(ctx, node); err != nil {
-		return errors.New("failed to create node")
+		return fmt.Errorf("failed to create node: %w", err)
 	}
+	setNodeID(span, node.ID)
 
 	if p, err := s.sqlRepo.GetNodePermission(ctx, node.ID, userID); err != nil {
-		return errors.New("failed to get node permission")
+		return fmt.Errorf("failed to get node permission: %w", err)
 	} else {
 		node.Permission = p
 	}
@@ -167,7 +199,13 @@ func (s *nodeService) CreateNode(ctx context.Context, node *model.Node, userID i
 // CreateNodeByPath resolves a slash-delimited path relative to baseNodeID,
 // creates intermediate Folder nodes as needed, and upserts the leaf node with
 // the given kind. The path must be relative (no leading "/" or "~").
-func (s *nodeService) CreateNodeByPath(ctx context.Context, node *model.Node, baseNodeID int32, path string, userID int32) error {
+func (s *nodeService) CreateNodeByPath(ctx context.Context, node *model.Node, baseNodeID int32, path string, userID int32) (err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.create_by_path")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, baseNodeID)
+	setUserID(span, userID)
+	span.SetAttributes(attribute.String("bayeos.path", path))
+
 	if path == "" {
 		return errors.New("path must not be empty")
 	}
@@ -183,14 +221,17 @@ func (s *nodeService) CreateNodeByPath(ctx context.Context, node *model.Node, ba
 	}
 	*node = result
 	if p, err := s.sqlRepo.GetNodePermission(ctx, node.ID, userID); err != nil {
-		return errors.New("failed to get node permission")
+		return fmt.Errorf("failed to get node permission: %w", err)
 	} else {
 		node.Permission = p
 	}
 	return nil
 }
 
-func (s *nodeService) DeleteNode(ctx context.Context, id int32) error {
+func (s *nodeService) DeleteNode(ctx context.Context, id int32) (err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.delete")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
 
 	if err := s.sqlRepo.DeleteNodeByID(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete node: %w", err)
@@ -198,22 +239,32 @@ func (s *nodeService) DeleteNode(ctx context.Context, id int32) error {
 	return nil
 }
 
-func (s *nodeService) FindNodeDescendantsByID(ctx context.Context, id int32) ([]int32, error) {
-	ids, err := s.sqlRepo.FindNodeDescendantsByID(ctx, id)
+func (s *nodeService) FindNodeDescendantsByID(ctx context.Context, id int32) (ids []int32, err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.descendants")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+
+	ids, err = s.sqlRepo.FindNodeDescendantsByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find descendants of node %d: %w", id, err)
 	}
 	return ids, nil
 }
 
-func (s *nodeService) DeleteNodesByIDs(ctx context.Context, ids []int32) error {
+func (s *nodeService) DeleteNodesByIDs(ctx context.Context, ids []int32) (err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.delete_many")
+	defer func() { endServiceSpan(span, err) }()
+
 	if err := s.sqlRepo.DeleteNodesByIDs(ctx, ids); err != nil {
 		return fmt.Errorf("failed to delete nodes: %w", err)
 	}
 	return nil
 }
 
-func (s *nodeService) UpdateNode(ctx context.Context, id int32, fields *map[string]interface{}) error {
+func (s *nodeService) UpdateNode(ctx context.Context, id int32, fields *map[string]interface{}) (err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.update")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
 
 	if err := s.sqlRepo.Do(ctx, func(repo repository.SqlRepo) error {
 		for k, v := range *fields {
@@ -247,12 +298,16 @@ func (s *nodeService) UpdateNode(ctx context.Context, id int32, fields *map[stri
 		}
 		return nil
 	}); err != nil {
-		return errors.New("failed to update node")
+		return fmt.Errorf("failed to update node: %w", err)
 	}
 	return nil
 }
 
-func (s *nodeService) UpdateNodeMetadata(ctx context.Context, id int32, metadata map[string]any) error {
+func (s *nodeService) UpdateNodeMetadata(ctx context.Context, id int32, metadata map[string]any) (err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.update_metadata")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+
 	md, err := model.MetadataFromMap(metadata)
 	if err != nil {
 		return err
@@ -260,22 +315,27 @@ func (s *nodeService) UpdateNodeMetadata(ctx context.Context, id int32, metadata
 	return s.sqlRepo.MergeNodeMetadata(ctx, id, md)
 }
 
-func (s *nodeService) FindNodeByToken(ctx context.Context, token uuid.UUID) (model.Node, error) {
+func (s *nodeService) FindNodeByToken(ctx context.Context, token uuid.UUID) (node model.Node, err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.find_by_token")
+	defer func() { endServiceSpan(span, err) }()
 
-	var node model.Node
-	node, err := s.sqlRepo.FindNodeByToken(ctx, token)
+	node, err = s.sqlRepo.FindNodeByToken(ctx, token)
 	if err != nil {
-		return node, errors.New("node not found")
+		return node, fmt.Errorf("node not found: %w", err)
 	}
 	return node, nil
 }
 
 // Implements middleware.NodeAuthorizer
-func (s *nodeService) HasPermission(ctx context.Context, id int32, perm uint8, userID int32) (bool, error) {
+func (s *nodeService) HasPermission(ctx context.Context, id int32, perm uint8, userID int32) (allowed bool, err error) {
+	ctx, span := withServiceSpan(ctx, "nodes.has_permission")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+	setUserID(span, userID)
+
 	granted, err := s.sqlRepo.GetNodePermission(ctx, id, userID)
 	if err != nil {
-		return false, errors.New("failed to get node permission")
+		return false, fmt.Errorf("failed to get node permission: %w", err)
 	}
 	return model.HasPermission(granted, perm), nil
-
 }

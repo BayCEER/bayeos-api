@@ -24,7 +24,7 @@ func (h *Handler) SignIn(c *gin.Context) {
 	}
 
 	// Token
-	token, err := h.IDTokenService.CreateToken(u)
+	token, err := h.IDTokenService.CreateToken(c.Request.Context(), u)
 	if err != nil {
 		mw.AbortWithInternalError(c, "Token creation failed")
 		return
@@ -96,7 +96,7 @@ func (h *Handler) RefreshIDToken(c *gin.Context) {
 		mw.AbortWithUnauthorizedError(c, "Missing header information")
 		return
 	}
-	token, err := h.IDTokenService.CreateToken(user)
+	token, err := h.IDTokenService.CreateToken(c.Request.Context(), user)
 	if err != nil {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to create token for user: %v", user.SignInName))
 		return

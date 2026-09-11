@@ -12,7 +12,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	log "github.com/BayCEER/bayeos/bayeos-api/logger"
 )
 
 // APIError is a machine-readable error matching the ErrorResponse schema.
@@ -98,6 +101,7 @@ func Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if rec := recover(); rec != nil {
+				logPanic(c, rec)
 				writeError(c, New(http.StatusInternalServerError, "InternalError", "An unexpected error occurred."))
 			}
 		}()
@@ -119,6 +123,8 @@ func toAPIError(err error) *APIError {
 }
 
 func writeError(c *gin.Context, apiErr *APIError) {
+	markError(c, apiErr)
+	logError(c, apiErr)
 	c.JSON(apiErr.Status, response{
 		Error:     apiErr.Code,
 		Message:   apiErr.Message,
@@ -127,6 +133,54 @@ func writeError(c *gin.Context, apiErr *APIError) {
 		TraceId:   traceID(c),
 	})
 	c.Abort()
+}
+
+// logError emits the error once so actual error text lands in the structured
+// logs, correlated with the traceId returned to the client. 5xx errors are
+// logged at error level, 4xx at warn.
+func logError(c *gin.Context, apiErr *APIError) {
+	ev := log.Log().Error()
+	if apiErr.Status < 500 {
+		ev = log.Log().Warn()
+	}
+	ev = ev.
+		Str("http.method", c.Request.Method).
+		Str("http.path", c.Request.URL.Path).
+		Int("http.status_code", apiErr.Status).
+		Str("error.code", apiErr.Code)
+	if apiErr.Details != nil {
+		ev = ev.Any("error.details", apiErr.Details)
+	}
+	if sc := trace.SpanContextFromContext(c.Request.Context()); sc.IsValid() {
+		ev = ev.Str("trace_id", sc.TraceID().String()).Str("span_id", sc.SpanID().String())
+	}
+	ev.Msg(apiErr.Message)
+}
+
+// logPanic records a recovered panic so it is not silently swallowed.
+func logPanic(c *gin.Context, rec any) {
+	sc := trace.SpanContextFromContext(c.Request.Context())
+	ev := log.Log().Error().
+		Interface("panic", rec).
+		Str("http.method", c.Request.Method).
+		Str("http.path", c.Request.URL.Path).
+		Int("http.status_code", http.StatusInternalServerError)
+	if sc.IsValid() {
+		ev = ev.Str("trace_id", sc.TraceID().String()).Str("span_id", sc.SpanID().String())
+	}
+	ev.Msg("panic recovered")
+}
+
+// markError records the error on the request span so the trace tree is
+// consistent even when the error only surfaces at the middleware boundary.
+// Only 5xx errors are treated as span errors; 4xx client errors are not.
+func markError(c *gin.Context, apiErr *APIError) {
+	if apiErr.Status < http.StatusInternalServerError {
+		return
+	}
+	span := trace.SpanFromContext(c.Request.Context())
+	span.RecordError(apiErr)
+	span.SetStatus(codes.Error, apiErr.Message)
 }
 
 func traceID(c *gin.Context) string {

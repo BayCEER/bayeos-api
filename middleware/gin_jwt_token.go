@@ -25,7 +25,7 @@ func AuthUser(s service.IDTokenService) gin.HandlerFunc {
 			AbortWithUnauthorizedError(c, "Must provide Authorization header with format `Bearer {token}`")
 			return
 		}
-		user, err := s.ValidateToken(idTokenHeader[1])
+		user, err := s.ValidateToken(c.Request.Context(), idTokenHeader[1])
 		if err != nil {
 			AbortWithUnauthorizedError(c, "Provided token is invalid or expired")
 			return
