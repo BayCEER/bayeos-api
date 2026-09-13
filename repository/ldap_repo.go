@@ -1,8 +1,10 @@
 package repository
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/go-ldap/ldap/v3"
 )
@@ -20,6 +22,7 @@ type LdapRepo interface {
 
 type ldapRepo struct {
 	ldapConfig LdapConfig
+	tlsConfig  *tls.Config
 }
 
 type LdapConfig struct {
@@ -32,9 +35,28 @@ type LdapConfig struct {
 }
 
 func NewLdapRepoFromConfig(c LdapConfig) LdapRepo {
+
+	var dynamicCiphers []uint16
+
+	// Add secure cipher suites to the list of dynamic ciphers
+	for _, cipher := range tls.CipherSuites() {
+		dynamicCiphers = append(dynamicCiphers, cipher.ID)
+	}
+
+	// Add insecure cipher suites to the list of dynamic ciphers
+	for _, cipher := range tls.InsecureCipherSuites() {
+		dynamicCiphers = append(dynamicCiphers, cipher.ID)
+	}
+
 	return &ldapRepo{
 		ldapConfig: c,
+		tlsConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			MaxVersion:   tls.VersionTLS13,
+			CipherSuites: dynamicCiphers,
+		},
 	}
+
 }
 
 func NewDisabledLdapRepo() LdapRepo {
@@ -50,13 +72,23 @@ func NewDisabledLdapRepo() LdapRepo {
 	}
 }
 
+func (r *ldapRepo) dialURL() (*ldap.Conn, error) {
+
+	l, err := ldap.DialURL(r.ldapConfig.URL, ldap.DialWithTLSConfig(r.tlsConfig))
+	if err != nil {
+		return nil, err
+	}
+	return l, nil
+
+}
+
 func (r *ldapRepo) Authenticate(name string, password string) (bool, error) {
-	l, err := ldap.DialURL(r.ldapConfig.URL)
+	l, err := r.dialURL()
 	if err != nil {
 		return false, err
 	}
 	defer l.Close()
-	err = l.Bind(fmt.Sprintf("%s=%s,%s", r.ldapConfig.SignInAttr, ldap.EscapeFilter(name), r.ldapConfig.Base), password)
+	err = l.Bind(fmt.Sprintf("%s=%s,%s", r.ldapConfig.SignInAttr, escapeDNAttrValue(name), r.ldapConfig.Base), password)
 	if err != nil {
 		return false, err
 	}
@@ -64,7 +96,7 @@ func (r *ldapRepo) Authenticate(name string, password string) (bool, error) {
 }
 
 func (r *ldapRepo) GetAttributes(name string) (LDAPAttributes, error) {
-	l, err := ldap.DialURL(r.ldapConfig.URL)
+	l, err := r.dialURL()
 	if err != nil {
 		return LDAPAttributes{}, err
 	}
@@ -73,7 +105,7 @@ func (r *ldapRepo) GetAttributes(name string) (LDAPAttributes, error) {
 	searchRequest := ldap.NewSearchRequest(
 		r.ldapConfig.Base,
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf("(%s=%s)", r.ldapConfig.SignInAttr, name),
+		fmt.Sprintf("(%s=%s)", r.ldapConfig.SignInAttr, ldap.EscapeFilter(name)),
 		[]string{r.ldapConfig.DisplayNameAttr, r.ldapConfig.EmailAttr},
 		nil,
 	)
@@ -93,4 +125,34 @@ func (r *ldapRepo) GetAttributes(name string) (LDAPAttributes, error) {
 
 func (r *ldapRepo) Enabled() bool {
 	return r.ldapConfig.Enabled
+}
+
+func escapeDNAttrValue(v string) string {
+	if v == "" {
+		return v
+	}
+	var b strings.Builder
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		switch c {
+		case ',', '+', '"', '\\', '<', '>', ';':
+			b.WriteByte('\\')
+			b.WriteByte(c)
+		case '#':
+			if i == 0 {
+				b.WriteString("\\#")
+			} else {
+				b.WriteByte(c)
+			}
+		case ' ':
+			if i == 0 || i == len(v)-1 {
+				b.WriteString("\\ ")
+			} else {
+				b.WriteByte(c)
+			}
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
