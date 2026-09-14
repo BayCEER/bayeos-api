@@ -9,6 +9,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/BayCEER/bayeos/bayeos-api/ldap"
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/BayCEER/bayeos/bayeos-api/repository"
 	"github.com/gabriel-vasile/mimetype"
@@ -34,7 +35,7 @@ type UserService interface {
 
 type userService struct {
 	sqlRepo  repository.SqlRepo
-	ldapRepo repository.LdapRepo
+	ldapRepo ldap.LdapRepo
 }
 
 const MIN_PASSWORD_LENGTH = 5
@@ -44,7 +45,7 @@ const MaxUserImageBytes = 5 << 20
 var ErrImageTooLarge = errors.New("image exceeds maximum allowed size")
 var ErrUnsupportedImageType = errors.New("unsupported image type, only PNG and JPEG are allowed")
 
-func NewUserService(sqlRepo repository.SqlRepo, ldapRepo repository.LdapRepo) UserService {
+func NewUserService(sqlRepo repository.SqlRepo, ldapRepo ldap.LdapRepo) UserService {
 	return &userService{
 		sqlRepo:  sqlRepo,
 		ldapRepo: ldapRepo,
@@ -203,7 +204,7 @@ func (s *userService) SignIn(ctx context.Context, cre model.SignInCredentials) (
 		// Try ldap auth
 		ldapAuth := false
 		if s.ldapRepo.Enabled() && !localAuth {
-			if b, err := s.ldapRepo.Authenticate(cre.Name, cre.Password); err == nil && b {
+			if b, err := s.ldapRepo.Authenticate(ctx, cre.Name, cre.Password); err == nil && b {
 				// LDAP auth success
 				ldapAuth = true
 			} else {

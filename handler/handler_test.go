@@ -13,6 +13,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/BayCEER/bayeos/bayeos-api/ldap"
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 
 	"github.com/BayCEER/bayeos/bayeos-api/repository"
@@ -199,11 +200,11 @@ func SignUp(name string, password string) (string, error) {
 type LDAPMock struct {
 }
 
-func (l *LDAPMock) Authenticate(name string, password string) (bool, error) {
+func (l *LDAPMock) Authenticate(ctx context.Context, name string, password string) (bool, error) {
 	return true, nil
 }
-func (l *LDAPMock) GetAttributes(name string) (repository.LDAPAttributes, error) {
-	return repository.LDAPAttributes{DisplayName: "ldapuser", Email: "ldapuser@ldap.com"}, nil
+func (l *LDAPMock) GetAttributes(ctx context.Context, name string) (ldap.LDAPAttributes, error) {
+	return ldap.LDAPAttributes{DisplayName: "ldapuser", Email: "ldapuser@ldap.com"}, nil
 }
 func (l *LDAPMock) Enabled() bool {
 	return false

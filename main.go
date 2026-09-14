@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/BayCEER/bayeos/bayeos-api/handler"
+	"github.com/BayCEER/bayeos/bayeos-api/ldap"
 	log "github.com/BayCEER/bayeos/bayeos-api/logger"
 	"github.com/BayCEER/bayeos/bayeos-api/plugin"
 	_ "github.com/BayCEER/bayeos/bayeos-api/plugin/timeseries"
@@ -180,10 +181,10 @@ func main() {
 	defer questPool.Close()
 	log.Infof("questdb connected")
 
-	ldapRepo := repository.NewDisabledLdapRepo()
+	ldapRepo := ldap.NewDisabledLdapRepo()
 
 	if ldapEnabled, exists := os.LookupEnv("WS_LDAP_ENABLED"); exists && strings.EqualFold(ldapEnabled, "true") {
-		ldapConfig := repository.LdapConfig{
+		ldapConfig := ldap.LdapConfig{
 			Enabled:         true,
 			URL:             mustGetEnv("WS_LDAP_URL"),
 			Base:            mustGetEnv("WS_LDAP_BASE"),
@@ -191,7 +192,7 @@ func main() {
 			DisplayNameAttr: mustGetEnv("WS_LDAP_DISPLAY_ATTRIBUTE"),
 			EmailAttr:       mustGetEnv("WS_LDAP_EMAIL_ATTRIBUTE"),
 		}
-		ldapRepo = repository.NewLdapRepoFromConfig(ldapConfig)
+		ldapRepo = ldap.NewLdapRepoFromConfig(ldapConfig)
 		log.Infof("LDAP authentication enabled")
 	}
 

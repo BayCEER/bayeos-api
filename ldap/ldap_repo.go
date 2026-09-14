@@ -1,12 +1,13 @@
-package repository
+package ldap
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/go-ldap/ldap/v3"
+	ldapv3 "github.com/go-ldap/ldap/v3"
 )
 
 type LDAPAttributes struct {
@@ -15,8 +16,8 @@ type LDAPAttributes struct {
 }
 
 type LdapRepo interface {
-	Authenticate(name string, password string) (bool, error)
-	GetAttributes(name string) (LDAPAttributes, error)
+	Authenticate(ctx context.Context, name string, password string) (bool, error)
+	GetAttributes(ctx context.Context, name string) (LDAPAttributes, error)
 	Enabled() bool
 }
 
@@ -72,9 +73,9 @@ func NewDisabledLdapRepo() LdapRepo {
 	}
 }
 
-func (r *ldapRepo) dialURL() (*ldap.Conn, error) {
+func (r *ldapRepo) dialURL() (*ldapv3.Conn, error) {
 
-	l, err := ldap.DialURL(r.ldapConfig.URL, ldap.DialWithTLSConfig(r.tlsConfig))
+	l, err := ldapv3.DialURL(r.ldapConfig.URL, ldapv3.DialWithTLSConfig(r.tlsConfig))
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +83,10 @@ func (r *ldapRepo) dialURL() (*ldap.Conn, error) {
 
 }
 
-func (r *ldapRepo) Authenticate(name string, password string) (bool, error) {
+func (r *ldapRepo) Authenticate(ctx context.Context, name string, password string) (ok bool, err error) {
+	ctx, span := withLdapSpan(ctx, "ldap.authenticate")
+	defer func() { endLdapSpan(span, err) }()
+
 	l, err := r.dialURL()
 	if err != nil {
 		return false, err
@@ -95,17 +99,20 @@ func (r *ldapRepo) Authenticate(name string, password string) (bool, error) {
 	return true, nil
 }
 
-func (r *ldapRepo) GetAttributes(name string) (LDAPAttributes, error) {
+func (r *ldapRepo) GetAttributes(ctx context.Context, name string) (attrs LDAPAttributes, err error) {
+	ctx, span := withLdapSpan(ctx, "ldap.get_attributes")
+	defer func() { endLdapSpan(span, err) }()
+
 	l, err := r.dialURL()
 	if err != nil {
 		return LDAPAttributes{}, err
 	}
 	defer l.Close()
 
-	searchRequest := ldap.NewSearchRequest(
+	searchRequest := ldapv3.NewSearchRequest(
 		r.ldapConfig.Base,
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf("(%s=%s)", r.ldapConfig.SignInAttr, ldap.EscapeFilter(name)),
+		ldapv3.ScopeWholeSubtree, ldapv3.NeverDerefAliases, 0, 0, false,
+		fmt.Sprintf("(%s=%s)", r.ldapConfig.SignInAttr, ldapv3.EscapeFilter(name)),
 		[]string{r.ldapConfig.DisplayNameAttr, r.ldapConfig.EmailAttr},
 		nil,
 	)
