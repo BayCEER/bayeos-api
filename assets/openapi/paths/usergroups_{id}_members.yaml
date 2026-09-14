@@ -1,0 +1,42 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+get:
+  summary: List members of a user group
+  description: Returns the user objects of all members of the group. Super users only.
+  tags:
+    - UserGroups
+  security:
+    - JWTAuth: []
+  responses:
+    "200":
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: ../schema/User.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+post:
+  summary: Add members to a user group
+  description: "Batch add users by id. Existing memberships are silently ignored. Super users only."
+  tags:
+    - UserGroups
+  security:
+    - JWTAuth: []
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/UserGroupMembers.yaml
+  responses:
+    "201":
+      description: members added
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

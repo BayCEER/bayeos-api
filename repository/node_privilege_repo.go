@@ -51,11 +51,23 @@ func (r *SqlRepo) FindNodePrivsByNodeID(ctx context.Context, ID int32) ([]model.
 	return p, nil
 }
 
+func (r *SqlRepo) FindNodePrivsByGroupID(ctx context.Context, ID int32) ([]model.NodePrivilege, error) {
+	p := []model.NodePrivilege{}
+	stmt := `SELECT * FROM node_privilege WHERE grantee_group_id=$1 ORDER BY node_id`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.SelectContext(c, &p, stmt, ID)
+	endQuerySpan(span, err)
+	if err != nil {
+		return p, err
+	}
+	return p, nil
+}
+
 func (r *SqlRepo) CreateNodePriv(ctx context.Context, e *model.NodePrivilege) error {
-	stmt := `INSERT INTO node_privilege (grantor_id, node_id, permission, grantee_id) VALUES ($1,$2,$3,$4) RETURNING *`
+	stmt := `INSERT INTO node_privilege (grantor_id, node_id, permission, grantee_id, grantee_group_id) VALUES ($1,$2,$3,$4,$5) RETURNING *`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, e, stmt,
-		e.GrantorID, e.NodeID, e.Permission, e.GranteeID)
+		e.GrantorID, e.NodeID, e.Permission, e.GranteeID, e.GranteeGroupID)
 	endQuerySpan(span, err)
 	return err
 }
@@ -75,5 +87,3 @@ func (r *SqlRepo) DeleteNodePrivByID(ctx context.Context, ID int32) error {
 	endQuerySpan(span, err)
 	return err
 }
-
-

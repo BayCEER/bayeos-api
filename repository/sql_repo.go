@@ -95,8 +95,9 @@ func rowsAffected(res sql.Result, err error) error {
 }
 
 func (r *SqlRepo) CheckFieldName(i any, colname string) error {
-	if strings.ToLower(colname) == "id" {
-		return fmt.Errorf("invalid column name: %s", colname)
+	col := strings.ToLower(colname)
+	if col == "id" || col == "created_at" {
+		return fmt.Errorf("column is read-only: %s", colname)
 	}
 	rt := reflect.TypeOf(i)
 	for i := 0; i < rt.NumField(); i++ {

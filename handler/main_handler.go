@@ -20,13 +20,14 @@ type Handler struct {
 	NodeTokenService service.NodeTokenService
 	NodePrivService  service.NodePrivService
 	IDTokenService   service.IDTokenService
+	UserGroupService service.UserGroupService
 
 	nodeDeleteHooks []plugin.NodeDeleteHookFunc
 }
 
 type Config struct {
-	AssetsPath       string
-	Router           *gin.Engine
+	AssetsPath string
+	Router     *gin.Engine
 	// BasePath is the URL prefix (context) under which every handler is
 	// registered, e.g. "bayeos-api". Routes drop the legacy "/api" segment and
 	// are mounted as /<BasePath>/<route>.
@@ -36,6 +37,7 @@ type Config struct {
 	NodeTokenService service.NodeTokenService
 	NodePrivService  service.NodePrivService
 	IDTokenService   service.IDTokenService
+	UserGroupService service.UserGroupService
 	Tracer           trace.Tracer
 
 	// Quest is the QuestDB connection pool handed to plugins.
@@ -52,6 +54,7 @@ func NewMainHandler(c *Config) {
 		NodeTokenService: c.NodeTokenService,
 		NodePrivService:  c.NodePrivService,
 		IDTokenService:   c.IDTokenService,
+		UserGroupService: c.UserGroupService,
 	}
 
 	r := c.Router
@@ -86,6 +89,20 @@ func NewMainHandler(c *Config) {
 
 	sec.PATCH("/users/:id", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.UpdateUser)
 	sec.DELETE("/users/:id", m.AuthSuper(), h.DeleteUser)
+
+	// User group management is restricted to super users
+	sec.GET("/usergroups", m.AuthSuper(), h.GetUserGroups)
+	sec.POST("/usergroups", m.AuthSuper(), h.CreateUserGroup)
+
+	sec.GET("/usergroups/:id", m.AuthSuper(), h.GetUserGroup)
+	sec.PATCH("/usergroups/:id", m.AuthSuper(), h.UpdateUserGroup)
+	sec.DELETE("/usergroups/:id", m.AuthSuper(), h.DeleteUserGroup)
+
+	sec.GET("/usergroups/:id/members", m.AuthSuper(), h.GetUserGroupMembers)
+	sec.POST("/usergroups/:id/members", m.AuthSuper(), h.AddUserGroupMembers)
+	sec.DELETE("/usergroups/:id/members/:uid", m.AuthSuper(), h.RemoveUserGroupMember)
+
+	sec.GET("/usergroups/:id/privileges", m.AuthSuper(), h.GetUserGroupPrivileges)
 
 	// With permission check implemented in handler
 	sec.GET("/nodes/search", h.SearchNodes)

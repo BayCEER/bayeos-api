@@ -20,11 +20,12 @@ type Node struct {
 }
 
 type NodePrivilege struct {
-	ID         int32 `db:"id" json:"id"`
-	NodeID     int32 `db:"node_id" json:"node_id"`
-	GrantorID  int32 `db:"grantor_id" json:"grantor_id"`
-	GranteeID  int32 `db:"grantee_id" json:"grantee_id"`
-	Permission uint8 `db:"permission" json:"permission"`
+	ID             int32    `db:"id" json:"id"`
+	NodeID         int32    `db:"node_id" json:"node_id"`
+	GrantorID      int32    `db:"grantor_id" json:"grantor_id"`
+	GranteeID      null.Int `db:"grantee_id" json:"grantee_id"`
+	GranteeGroupID null.Int `db:"grantee_group_id" json:"grantee_group_id"`
+	Permission     uint8    `db:"permission" json:"permission"`
 }
 
 type NodeToken struct {
@@ -41,7 +42,7 @@ type NodeSearch struct {
 }
 
 func NewNodePrivilege(nodeID int32, grantorID int32, granteeID int32) NodePrivilege {
-	return NodePrivilege{NodeID: nodeID, GrantorID: grantorID, GranteeID: granteeID, Permission: FULL_PERMISSION}
+	return NodePrivilege{NodeID: nodeID, GrantorID: grantorID, GranteeID: null.IntFrom(int64(granteeID)), Permission: FULL_PERMISSION}
 }
 
 func NewNodeToken(nodeID int32) NodeToken {

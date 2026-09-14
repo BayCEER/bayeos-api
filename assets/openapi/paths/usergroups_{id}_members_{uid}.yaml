@@ -1,0 +1,25 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+  - name: uid
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+delete:
+  summary: Remove a member from a user group
+  description: Super users only.
+  tags:
+    - UserGroups
+  security:
+    - JWTAuth: []
+  responses:
+    "200":
+      description: member removed
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

@@ -1,0 +1,7 @@
+type: object
+properties:
+  display_name:
+    type: string
+description: Partial update; omitted fields are left unchanged.
+example:
+  display_name: Renamed Group

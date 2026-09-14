@@ -1,6 +1,8 @@
 drop table if exists "node_privilege";
 drop table if exists "node_token";
 drop table if exists "user_images";
+drop table if exists "user_group_member";
+drop table if exists "user_group";
 drop table if exists "users";
 drop table if exists "node";
 
@@ -9,6 +11,7 @@ drop function if exists insert_node_path();
 drop function if exists update_node_path();
 drop function if exists suppress_wrong_node_display_name();
 drop function if exists suppress_system_user_delete();
+drop function if exists suppress_system_group_delete();
 drop function if exists get_node_permission(_node_id integer, _user_id integer);
 drop function if exists node_path(id integer, name text, kind text, parent_id integer);
 drop function if exists users_delete_cascade();

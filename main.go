@@ -202,6 +202,7 @@ func main() {
 	nodeService := service.NewNodeService(sqlRepo)
 	nodePrivService := service.NewNodePrivService(sqlRepo)
 	nodeTokenService := service.NewNodeTokenService(sqlRepo)
+	userGroupService := service.NewUserGroupService(sqlRepo)
 
 	idTokenService := service.NewTokenService(&service.TSConfig{
 		APIKey:            mustGetEnv("WS_API_KEY"),
@@ -218,6 +219,7 @@ func main() {
 		NodePrivService:  nodePrivService,
 		NodeTokenService: nodeTokenService,
 		IDTokenService:   idTokenService,
+		UserGroupService: userGroupService,
 		Tracer:           otel.Tracer(serviceName),
 		Quest:            questPool,
 		Plugins:          plugins(),

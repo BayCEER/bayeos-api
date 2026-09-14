@@ -1,0 +1,12 @@
+type: object
+required:
+  - user_ids
+properties:
+  user_ids:
+    type: array
+    minItems: 1
+    items:
+      type: integer
+      format: int32
+example:
+  user_ids: [1, 2, 3]

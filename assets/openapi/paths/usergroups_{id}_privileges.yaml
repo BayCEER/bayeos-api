@@ -1,0 +1,25 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+get:
+  summary: Get node privileges granted to a user group
+  description: Super users only.
+  tags:
+    - UserGroups
+  security:
+    - JWTAuth: []
+  responses:
+    "200":
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: ../schema/NodePrivilege.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

@@ -1,0 +1,53 @@
+get:
+  summary: Get user groups
+  tags:
+    - "UserGroups"
+  description: "Get all user groups, optionally filtered by id. Super users only."
+  security:
+    - JWTAuth: []
+  parameters:
+    - name: ids
+      in: query
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: array
+        items:
+          type: integer
+          format: int32
+      description: Optional comma-separated list of group ids to filter by (e.g. `ids=1,2,3`)
+
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: ../schema/UserGroup.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+post:
+  summary: Create a new user group
+  description: Create a new user group. Super users only.
+  tags:
+    - "UserGroups"
+  security:
+    - JWTAuth: []
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/UserGroupCreate.yaml
+  responses:
+    "201":
+      description: created
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/UserGroup.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

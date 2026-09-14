@@ -17,6 +17,10 @@ properties:
   home_node_id:
     type: integer
     format:  int32
+  created_at:
+    readOnly: true
+    type: string
+    format: date-time
   last_sign_in_time:
     type: string
     format: date-time
@@ -29,5 +33,6 @@ example:
   email_address: marge.simpson@gmail.com
   super_user: false
   home_node_id: 10
+  created_at: "2022-12-07T14:02:59.303"
   last_sign_in_time: "2022-12-07T14:02:59.303"
   

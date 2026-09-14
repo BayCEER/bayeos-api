@@ -58,6 +58,17 @@ paths:
     description: Get all privileges of a user on nodes
     $ref: paths/users_{id}_privileges.yaml
 
+  /usergroups:
+    $ref: paths/usergroups.yaml
+  /usergroups/{id}:
+    $ref: paths/usergroups_{id}.yaml
+  /usergroups/{id}/members:
+    $ref: paths/usergroups_{id}_members.yaml
+  /usergroups/{id}/members/{uid}:
+    $ref: paths/usergroups_{id}_members_{uid}.yaml
+  /usergroups/{id}/privileges:
+    $ref: paths/usergroups_{id}_privileges.yaml
+
   /nodes:
     $ref: paths/nodes.yaml
   /nodes/search:

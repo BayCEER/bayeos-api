@@ -1,0 +1,54 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+get:
+  summary: Get a user group
+  description: Super users only.
+  tags:
+    - UserGroups
+  security:
+    - JWTAuth: []
+
+  responses:
+    "200":
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/UserGroup.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+patch:
+  summary: Update a user group
+  tags:
+    - UserGroups
+  security:
+    - JWTAuth: []
+  description: Partial update, only send the fields to change; omitted fields are left unchanged. Super users only.
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/UserGroupUpdate.yaml
+  responses:
+    "200":
+      description: updated
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+delete:
+  summary: Delete a user group
+  description: Super users only. System groups cannot be deleted.
+  tags:
+    - UserGroups
+  security:
+    - JWTAuth: []
+  responses:
+    "200":
+      description: deleted
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

@@ -99,6 +99,7 @@ func setup() {
 		NodeService:      service.NewNodeService(sqlRepo),
 		NodeTokenService: service.NewNodeTokenService(sqlRepo),
 		NodePrivService:  service.NewNodePrivService(sqlRepo),
+		UserGroupService: service.NewUserGroupService(sqlRepo),
 		IDTokenService:   IDTokenService,
 	})
 	log.Println("test up")

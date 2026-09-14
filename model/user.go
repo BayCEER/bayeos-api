@@ -11,6 +11,7 @@ type User struct {
 	SuperUser      bool      `db:"super_user" json:"super_user"`
 	HomeNodeID     int32     `db:"home_node_id" json:"home_node_id"`
 	PasswordHash   string    `db:"password_hash,omitempty" json:"-"`
+	CreatedAt      null.Time `db:"created_at" json:"created_at"`
 	LastSignInTime null.Time `db:"last_sign_in_time" json:"last_sign_in_time"`
 }
 

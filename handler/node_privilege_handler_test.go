@@ -10,6 +10,7 @@ import (
 
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/guregu/null.v4"
 )
 
 func TestGetNodePrivsByUser(t *testing.T) {
@@ -43,7 +44,8 @@ func TestNodePrivilegeCRUD(t *testing.T) {
 	require.NoError(t, err)
 
 	// CREATE privilege on grantor's home node
-	priv := model.NodePrivilege{GranteeID: grantee.ID, GrantorID: grantor.ID, Permission: model.READ_PERMISSION}
+	granteeNullID := null.IntFrom(int64(grantee.ID))
+	priv := model.NodePrivilege{GranteeID: granteeNullID, GrantorID: grantor.ID, Permission: model.READ_PERMISSION}
 	req, err := NewJWTRequest("POST", fmt.Sprintf("/bayeos-api/nodes/%d/privileges", grantor.HomeNodeID), priv, grantorToken)
 	require.NoError(t, err)
 	w := httptest.NewRecorder()
@@ -55,7 +57,7 @@ func TestNodePrivilegeCRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, int32(0), created.ID)
 	require.Equal(t, grantor.HomeNodeID, created.NodeID)
-	require.Equal(t, grantee.ID, created.GranteeID)
+	require.Equal(t, granteeNullID, created.GranteeID)
 	require.Equal(t, model.READ_PERMISSION, created.Permission)
 
 	// GET all privileges of the node -> created privilege is listed

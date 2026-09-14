@@ -1,0 +1,31 @@
+type: object
+required:
+  - display_name
+properties:
+  id:
+    readOnly: true
+    type: integer
+    format: int32
+  display_name:
+    type: string
+  sys_group:
+    readOnly: true
+    type: boolean
+    description: System groups are protected from deletion
+  created_at:
+    readOnly: true
+    type: string
+    format: date-time
+  memberids:
+    readOnly: true
+    type: array
+    items:
+      type: integer
+      format: int32
+    description: User ids belonging to the group
+example:
+  id: 1
+  display_name: Field Technicians
+  sys_group: false
+  created_at: "2026-09-14T10:00:00.000"
+  memberids: [1, 2]

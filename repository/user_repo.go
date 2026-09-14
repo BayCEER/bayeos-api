@@ -10,7 +10,7 @@ import (
 func (r *SqlRepo) FindUserByID(ctx context.Context, ID int32) (model.User, error) {
 	var u model.User
 	stmt := `SELECT id,display_name,sign_in_name,email_address,home_node_id 
-	,password_hash,super_user,sys_user, last_sign_in_time FROM "users" WHERE id=$1`
+	,password_hash,super_user,sys_user, created_at, last_sign_in_time FROM "users" WHERE id=$1`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, &u, stmt, ID)
 	endQuerySpan(span, err)
@@ -23,7 +23,7 @@ func (r *SqlRepo) FindUserByID(ctx context.Context, ID int32) (model.User, error
 func (r *SqlRepo) FindUsersByIDs(ctx context.Context, ids []int32) ([]model.User, error) {
 	u := []model.User{}
 	stmt := `SELECT id, display_name,sign_in_name,email_address,home_node_id, 
-	password_hash,super_user,sys_user, last_sign_in_time from "users" where id = ANY($1::int[]) order by display_name desc`
+	password_hash,super_user,sys_user, created_at, last_sign_in_time from "users" where id = ANY($1::int[]) order by display_name desc`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.SelectContext(c, &u, stmt, ids)
 	endQuerySpan(span, err)
@@ -36,7 +36,7 @@ func (r *SqlRepo) FindUsersByIDs(ctx context.Context, ids []int32) ([]model.User
 func (r *SqlRepo) FindUserBySignInName(ctx context.Context, signInName string) (model.User, error) {
 	var u model.User
 	stmt := `SELECT id, display_name,sign_in_name,email_address,home_node_id 
-	,password_hash,super_user,sys_user,last_sign_in_time FROM "users" WHERE sign_in_name=$1`
+	,password_hash,super_user,sys_user, created_at, last_sign_in_time FROM "users" WHERE sign_in_name=$1`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, &u, stmt, signInName)
 	endQuerySpan(span, err)
@@ -49,7 +49,7 @@ func (r *SqlRepo) FindUserBySignInName(ctx context.Context, signInName string) (
 func (r *SqlRepo) FindAllUsers(ctx context.Context) ([]model.User, error) {
 	u := []model.User{}
 	stmt := `SELECT id, display_name,sign_in_name,email_address,home_node_id, 
-	password_hash,super_user,sys_user, last_sign_in_time from "users" order by display_name desc`
+	password_hash,super_user,sys_user, created_at, last_sign_in_time from "users" order by display_name desc`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.SelectContext(c, &u, stmt)
 	endQuerySpan(span, err)
@@ -61,7 +61,7 @@ func (r *SqlRepo) FindAllUsers(ctx context.Context) ([]model.User, error) {
 
 func (r *SqlRepo) CreateUser(ctx context.Context, e *model.User) error {
 	stmt := `INSERT INTO "users" (display_name,sign_in_name,email_address,home_node_id 
-		,password_hash,super_user,sys_user) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,display_name,sign_in_name,email_address,home_node_id, password_hash,super_user,sys_user`
+		,password_hash,super_user,sys_user) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,display_name,sign_in_name,email_address,home_node_id, password_hash,super_user,sys_user, created_at, last_sign_in_time`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, e, stmt,
 		e.DisplayName, e.SignInName, e.EmailAddress, e.HomeNodeID, e.PasswordHash, e.SuperUser, e.SysUser)
@@ -71,7 +71,7 @@ func (r *SqlRepo) CreateUser(ctx context.Context, e *model.User) error {
 
 func (r *SqlRepo) UpdateUser(ctx context.Context, e *model.User) error {
 	stmt := `UPDATE "users" set display_name=$1,sign_in_name=$2,email_address=$3,home_node_id=$4, 
-		,password_hash=$5,super_user=$6,sys_user=$7, last_sign_in_time=$8 WHERE id=$9 RETURNING id,display_name,sign_in_name,email_address,home_node_id, password_hash,super_user,sys_user`
+		,password_hash=$5,super_user=$6,sys_user=$7, last_sign_in_time=$8 WHERE id=$9 RETURNING id,display_name,sign_in_name,email_address,home_node_id, password_hash,super_user,sys_user, created_at, last_sign_in_time`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, e, stmt,
 		e.DisplayName, e.SignInName, e.EmailAddress, e.HomeNodeID, e.PasswordHash, e.SuperUser, e.SysUser, e.LastSignInTime, e.ID)

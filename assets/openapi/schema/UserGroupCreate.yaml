@@ -1,0 +1,8 @@
+type: object
+required:
+  - display_name
+properties:
+  display_name:
+    type: string
+example:
+  display_name: Field Technicians

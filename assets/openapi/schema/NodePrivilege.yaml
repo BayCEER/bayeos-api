@@ -1,8 +1,7 @@
 type: object
 required:
-  - grantee_id
   - permission
-description: "node_id defaults to the node in the request path; grantor_id is derived from the authenticated user when creating a privilege."
+description: "Exactly one of grantee_id (user) or grantee_group_id (group) must be set. node_id defaults to the node in the request path; grantor_id is derived from the authenticated user."
 properties:
   id:
     readOnly: true
@@ -15,6 +14,11 @@ properties:
   grantee_id:
     type: integer
     format: int32
+    description: Set this to grant to a specific user
+  grantee_group_id:
+    type: integer
+    format: int32
+    description: Set this to grant to all members of a user group
   grantor_id:
     readOnly: true
     type: integer
