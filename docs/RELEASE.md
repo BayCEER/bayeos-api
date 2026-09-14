@@ -1,6 +1,7 @@
 # Releases: Git Tags & Docker Images
 
-**Repo:** `https://github.com/oarchner/bayeos-api.git` (branch `main`)
+**Repo:** `https://github.com/BayCEER/bayeos-api.git` (branch `main`)
+
 **CI:** `.github/workflows/docker-publish.yml` (the only workflow; no separate release workflow)
 
 A "release" is driven entirely by a git tag; Docker image tags are derived from it automatically.
