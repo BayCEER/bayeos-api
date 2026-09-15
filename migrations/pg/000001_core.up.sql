@@ -9,30 +9,14 @@ CREATE TABLE node (
     path node_path null, 
     metadata jsonb NOT NULL DEFAULT '{}',
     created_at timestamp with time zone default now(),      
-    CONSTRAINT fk_node_parent FOREIGN KEY (parent_id)
-        REFERENCES node (id) MATCH SIMPLE
-        ON UPDATE NO ACTION
-        ON DELETE CASCADE,
     CONSTRAINT uk_node_display_name_kind UNIQUE (parent_id,display_name,kind)    
 );
-
--- To speed up full text search 
-create index node_path_path on node (((path).path));
-
--- To speed up get child 
-create index node_parent_id on node (parent_id);
-
-create index node_path_id on node using gin (((path).ids));
-
 
 create table node_token (
         id serial primary key,
         node_id int not null,
         active bool default true,
-        token uuid not null,
-        CONSTRAINT fk_node_token_node FOREIGN KEY (node_id)
-        REFERENCES node (id) MATCH SIMPLE
-        ON DELETE CASCADE
+        token uuid not null
 );
 
 
@@ -54,9 +38,6 @@ CREATE TABLE users (
     sys_user bool default false,
     last_sign_in_time timestamp with time zone,
     created_at timestamp with time zone not null default now(),
-    CONSTRAINT fk_user_home_node FOREIGN KEY (home_node_id)
-        REFERENCES "node" (id) MATCH SIMPLE
-        ON DELETE SET DEFAULT,
     constraint uk_user_sign_in_name unique (sign_in_name)
 );  
 
@@ -64,12 +45,6 @@ CREATE TABLE user_group_member (
     id serial primary key,
     group_id int not null,
     user_id int not null,
-    CONSTRAINT fk_user_group_member_group FOREIGN KEY (group_id)
-        REFERENCES user_group (id) MATCH SIMPLE
-        ON DELETE CASCADE,
-    CONSTRAINT fk_user_group_member_user FOREIGN KEY (user_id)
-        REFERENCES "users" (id) MATCH SIMPLE
-        ON DELETE CASCADE,
     CONSTRAINT uk_user_group_member UNIQUE (group_id, user_id)
 );
 
@@ -77,15 +52,9 @@ CREATE TABLE user_images (
  id SERIAL PRIMARY KEY,
  user_id INTEGER NOT NULL,
  image_data BYTEA NOT NULL, 
- mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
- CONSTRAINT fk_user_images_users FOREIGN KEY (user_id)
-        REFERENCES "users" (id) MATCH SIMPLE
-        ON DELETE CASCADE
+ mime_type TEXT NOT NULL DEFAULT 'image/jpeg'
 );
 
-
-
-CREATE UNIQUE INDEX uk_user_images_user_id ON user_images (user_id);
 
 
 create table node_privilege (
@@ -94,16 +63,7 @@ create table node_privilege (
         grantee_id int,
         grantee_group_id int,
         grantor_id int not null,
-        permission int not null default 7,
-        CONSTRAINT fk_node_privilege_node FOREIGN KEY (node_id)
-        REFERENCES node (id) MATCH SIMPLE
-        ON DELETE CASCADE,
-        CONSTRAINT fk_node_privilege_grantee FOREIGN KEY (grantee_id)
-        REFERENCES "users" (id) MATCH SIMPLE
-        ON DELETE CASCADE,
-        CONSTRAINT fk_node_privilege_grantor FOREIGN KEY (grantor_id)
-        REFERENCES "users" (id) MATCH SIMPLE
-        ON DELETE CASCADE
+        permission int not null default 7
 );
 
 
@@ -281,20 +241,72 @@ delete
     
    
 
-ALTER TABLE node_privilege ADD CONSTRAINT fk_node_privilege_group_fk
-    FOREIGN KEY (grantee_group_id) REFERENCES user_group (id) MATCH SIMPLE ON DELETE CASCADE;
+
+-- Indexes
+-- To speed up full text search
+create index node_path_path on node (((path).path));
+
+-- To speed up get child
+create index node_parent_id on node (parent_id);
+
+create index node_path_id on node using gin (((path).ids));
+
+CREATE UNIQUE INDEX uk_user_images_user_id ON user_images (user_id);
+
+-- Prevent duplicate group grants per node
+CREATE UNIQUE INDEX uk_node_privilege_group ON node_privilege (node_id, grantee_group_id) WHERE grantee_group_id IS NOT NULL;
+
+CREATE INDEX idx_node_metadata ON node USING gin (metadata);
+
+
+-- Checks
 
 -- Exactly one of grantee_id or grantee_group_id must be set
 ALTER TABLE node_privilege ADD CONSTRAINT ck_node_privilege_grantee
     CHECK (grantee_id IS NOT NULL OR grantee_group_id IS NOT NULL);
 
--- Prevent duplicate group grants per node
-CREATE UNIQUE INDEX uk_node_privilege_group ON node_privilege (node_id, grantee_group_id) WHERE grantee_group_id IS NOT NULL;
 
+-- Foreign keys
 
-CREATE INDEX idx_node_metadata ON node USING gin (metadata);
+ALTER TABLE node ADD CONSTRAINT fk_node_parent
+    FOREIGN KEY (parent_id) REFERENCES node (id) MATCH SIMPLE
+    ON UPDATE NO ACTION ON DELETE CASCADE;
 
+ALTER TABLE node_token ADD CONSTRAINT fk_node_token_node
+    FOREIGN KEY (node_id) REFERENCES node (id) MATCH SIMPLE
+    ON DELETE CASCADE;
 
+ALTER TABLE users ADD CONSTRAINT fk_user_home_node
+    FOREIGN KEY (home_node_id) REFERENCES "node" (id) MATCH SIMPLE
+    ON DELETE SET DEFAULT;
+
+ALTER TABLE user_group_member ADD CONSTRAINT fk_user_group_member_group
+    FOREIGN KEY (group_id) REFERENCES user_group (id) MATCH SIMPLE
+    ON DELETE CASCADE;
+
+ALTER TABLE user_group_member ADD CONSTRAINT fk_user_group_member_user
+    FOREIGN KEY (user_id) REFERENCES "users" (id) MATCH SIMPLE
+    ON DELETE CASCADE;
+
+ALTER TABLE user_images ADD CONSTRAINT fk_user_images_users
+    FOREIGN KEY (user_id) REFERENCES "users" (id) MATCH SIMPLE
+    ON DELETE CASCADE;
+
+ALTER TABLE node_privilege ADD CONSTRAINT fk_node_privilege_node
+    FOREIGN KEY (node_id) REFERENCES node (id) MATCH SIMPLE
+    ON DELETE CASCADE;
+
+ALTER TABLE node_privilege ADD CONSTRAINT fk_node_privilege_grantee
+    FOREIGN KEY (grantee_id) REFERENCES "users" (id) MATCH SIMPLE
+    ON DELETE CASCADE;
+
+ALTER TABLE node_privilege ADD CONSTRAINT fk_node_privilege_grantor
+    FOREIGN KEY (grantor_id) REFERENCES "users" (id) MATCH SIMPLE
+    ON DELETE CASCADE;
+
+ALTER TABLE node_privilege ADD CONSTRAINT fk_node_privilege_group_fk
+    FOREIGN KEY (grantee_group_id) REFERENCES user_group (id) MATCH SIMPLE
+    ON DELETE CASCADE;
 
 
 -- Root folder  
