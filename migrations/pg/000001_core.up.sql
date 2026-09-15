@@ -270,42 +270,52 @@ ALTER TABLE node_privilege ADD CONSTRAINT ck_node_privilege_grantee
 
 ALTER TABLE node ADD CONSTRAINT fk_node_parent
     FOREIGN KEY (parent_id) REFERENCES node (id) MATCH SIMPLE
-    ON UPDATE NO ACTION ON DELETE CASCADE;
+    ON UPDATE CASCADE
+    ON DELETE CASCADE;
 
 ALTER TABLE node_token ADD CONSTRAINT fk_node_token_node
     FOREIGN KEY (node_id) REFERENCES node (id) MATCH SIMPLE
+    ON UPDATE CASCADE
     ON DELETE CASCADE;
 
 ALTER TABLE users ADD CONSTRAINT fk_user_home_node
     FOREIGN KEY (home_node_id) REFERENCES "node" (id) MATCH SIMPLE
+    ON UPDATE CASCADE
     ON DELETE SET DEFAULT;
 
 ALTER TABLE user_group_member ADD CONSTRAINT fk_user_group_member_group
     FOREIGN KEY (group_id) REFERENCES user_group (id) MATCH SIMPLE
+    ON UPDATE CASCADE
     ON DELETE CASCADE;
 
 ALTER TABLE user_group_member ADD CONSTRAINT fk_user_group_member_user
     FOREIGN KEY (user_id) REFERENCES "users" (id) MATCH SIMPLE
+    ON UPDATE CASCADE
     ON DELETE CASCADE;
 
 ALTER TABLE user_images ADD CONSTRAINT fk_user_images_users
     FOREIGN KEY (user_id) REFERENCES "users" (id) MATCH SIMPLE
+    ON UPDATE CASCADE
     ON DELETE CASCADE;
 
 ALTER TABLE node_privilege ADD CONSTRAINT fk_node_privilege_node
     FOREIGN KEY (node_id) REFERENCES node (id) MATCH SIMPLE
+    ON UPDATE CASCADE
     ON DELETE CASCADE;
 
 ALTER TABLE node_privilege ADD CONSTRAINT fk_node_privilege_grantee
     FOREIGN KEY (grantee_id) REFERENCES "users" (id) MATCH SIMPLE
+    ON UPDATE CASCADE
     ON DELETE CASCADE;
 
 ALTER TABLE node_privilege ADD CONSTRAINT fk_node_privilege_grantor
     FOREIGN KEY (grantor_id) REFERENCES "users" (id) MATCH SIMPLE
+    ON UPDATE CASCADE
     ON DELETE CASCADE;
 
 ALTER TABLE node_privilege ADD CONSTRAINT fk_node_privilege_group_fk
     FOREIGN KEY (grantee_group_id) REFERENCES user_group (id) MATCH SIMPLE
+    ON UPDATE CASCADE
     ON DELETE CASCADE;
 
 

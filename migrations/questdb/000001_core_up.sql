@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS series (
 ) TIMESTAMP(ts) PARTITION BY DAY WAL
 DEDUP UPSERT KEYS(id, ts);
 
+// TODO: Add restriction on status to only allow valid and not deleted data 
 CREATE MATERIALIZED VIEW IF NOT EXISTS series_view_1h AS
 SELECT
   id,
