@@ -38,8 +38,7 @@ patch:
                 format: float
                 description: Measurement value
               status:
-                type: number
-                format: byte
+                $ref: ../schema/TimeseriesStatus.yaml
                 description: New status byte for the data point
   responses:
     "200":

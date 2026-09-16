@@ -50,6 +50,13 @@ post:
                       type: number
                       format: double
                     description: Readings, parallel to ts
+                  status:
+                    type: array
+                    items:
+                      $ref: ../schema/TimeseriesStatus.yaml
+                    description: >
+                      Optional validation status per reading, parallel to values;
+                      when present it is stored with the data point.
   parameters:
     - name: ignore_invalid_timestamps
       in: query

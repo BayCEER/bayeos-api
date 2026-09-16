@@ -280,6 +280,38 @@ func (h *Handlers) GetStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
+func (h *Handlers) GetGaps(c *gin.Context) {
+	id, err := strings.ParseStringToInt32(c.Param("id"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid id parameter")
+		return
+	}
+	userID, ok := mw.AuthUserIDFromContext(c)
+	if !ok {
+		mw.AbortWithInternalError(c, "user id not found")
+		return
+	}
+	var q TimeseriesGapsQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid query parameters")
+		return
+	}
+	gaps, err := h.service.GetGaps(c.Request.Context(), id, q, userID)
+	if err != nil {
+		if errors.Is(err, ErrNotTimeseries) {
+			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
+			return
+		}
+		if errors.Is(err, ErrNoResolution) {
+			mw.AbortWithBadRequestError(c, "node metadata requires a resolution value, or provide threshold_minutes")
+			return
+		}
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to detect gaps: %v", err))
+		return
+	}
+	c.JSON(http.StatusOK, gaps)
+}
+
 // queryBoolDefault returns the boolean query parameter key, or def when the
 // parameter is empty or cannot be parsed as a bool.
 func queryBoolDefault(c *gin.Context, key string, def bool) bool {

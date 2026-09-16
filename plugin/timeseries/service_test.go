@@ -17,13 +17,20 @@ import (
 type fakeQuestRepo struct {
 	data              map[int32][]DataPoint
 	status            map[int32][]StatusPoint
+	gaps              map[int32][]GapInfo
 	lastInterval      string
 	lastSampleFunc    string
 	lastBatchSampleFn string
+	lastGapThreshold  int
+	lastGapLimit      int
 }
 
 func newFakeQuestRepo() *fakeQuestRepo {
-	return &fakeQuestRepo{data: map[int32][]DataPoint{}, status: map[int32][]StatusPoint{}}
+	return &fakeQuestRepo{
+		data:   map[int32][]DataPoint{},
+		status: map[int32][]StatusPoint{},
+		gaps:   map[int32][]GapInfo{},
+	}
 }
 
 func (f *fakeQuestRepo) Insert(ctx context.Context, nodeID int32, pts []DataPoint) error {
@@ -34,7 +41,12 @@ func (f *fakeQuestRepo) Insert(ctx context.Context, nodeID int32, pts []DataPoin
 func (f *fakeQuestRepo) InsertBatch(ctx context.Context, series []SeriesData) error {
 	for _, s := range series {
 		for i := range s.Ts {
-			f.data[s.ID] = append(f.data[s.ID], DataPoint{Ts: s.Ts[i], Value: s.Values[i]})
+			dp := DataPoint{Ts: s.Ts[i], Value: s.Values[i]}
+			if i < len(s.Status) {
+				status := s.Status[i]
+				dp.Status = &status
+			}
+			f.data[s.ID] = append(f.data[s.ID], dp)
 		}
 	}
 	return nil
@@ -60,6 +72,11 @@ func (f *fakeQuestRepo) QueryBatch(ctx context.Context, ids []int32, from, to *t
 		for _, p := range f.data[id] {
 			s.Ts = append(s.Ts, p.Ts)
 			s.Values = append(s.Values, p.Value)
+			if p.Status != nil {
+				s.Status = append(s.Status, *p.Status)
+			} else {
+				s.Status = append(s.Status, StatusNotSet)
+			}
 		}
 		out = append(out, s)
 	}
@@ -110,8 +127,10 @@ func (f *fakeQuestRepo) ComputeCompleteness(ctx context.Context, nodeID int32, r
 	}, nil
 }
 
-func (f *fakeQuestRepo) DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time) ([]GapInfo, error) {
-	return nil, nil
+func (f *fakeQuestRepo) DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time, limit int) ([]GapInfo, error) {
+	f.lastGapThreshold = thresholdMinutes
+	f.lastGapLimit = limit
+	return f.gaps[nodeID], nil
 }
 
 func TestFakeQuestRepoRoundTrip(t *testing.T) {
@@ -244,7 +263,54 @@ func TestGetStatsWithoutResolution(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(5), stats.Count)
 	require.Nil(t, stats.Completeness)
-	require.Empty(t, stats.Gaps)
+}
+
+func TestGetGaps(t *testing.T) {
+	r := newFakeQuestRepo()
+	r.gaps[7] = []GapInfo{
+		{Start: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), End: time.Date(2026, 1, 1, 6, 0, 0, 0, time.UTC), DurationMinutes: 360},
+		{Start: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC), End: time.Date(2026, 1, 2, 1, 0, 0, 0, time.UTC), DurationMinutes: 60},
+	}
+
+	nodes := &stubNodeService{node: model.Node{ID: 7, DisplayName: "test", Kind: Kind, ParentID: 1}}
+	var md model.Metadata
+	md, err := model.MetadataFromMap(map[string]any{"resolution": float64(3600)})
+	require.NoError(t, err)
+	nodes.node.Metadata = md
+
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+	gaps, err := svc.GetGaps(context.Background(), 7, TimeseriesGapsQuery{}, 1)
+	require.NoError(t, err)
+	require.Len(t, gaps, 2)
+	require.Equal(t, int(120), r.lastGapThreshold)
+	require.Equal(t, 20, r.lastGapLimit)
+}
+
+func TestGetGapsExplicitThreshold(t *testing.T) {
+	r := newFakeQuestRepo()
+	r.gaps[8] = []GapInfo{{Start: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), End: time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC), DurationMinutes: 60}}
+
+	nodes := &stubNodeService{node: model.Node{ID: 8, DisplayName: "test", Kind: Kind, ParentID: 1}}
+
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+	threshold := 5
+	limit := 3
+	gaps, err := svc.GetGaps(context.Background(), 8, TimeseriesGapsQuery{ThresholdMinutes: &threshold, Limit: &limit}, 1)
+	require.NoError(t, err)
+	require.Len(t, gaps, 1)
+	require.Equal(t, 5, r.lastGapThreshold)
+	require.Equal(t, 3, r.lastGapLimit)
+}
+
+func TestGetGapsNoResolution(t *testing.T) {
+	r := newFakeQuestRepo()
+
+	nodes := &stubNodeService{node: model.Node{ID: 8, DisplayName: "test", Kind: Kind, ParentID: 1}}
+
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+	gaps, err := svc.GetGaps(context.Background(), 8, TimeseriesGapsQuery{}, 1)
+	require.ErrorIs(t, err, ErrNoResolution)
+	require.Nil(t, gaps)
 }
 
 func TestQueryDataBatch(t *testing.T) {
@@ -658,3 +724,136 @@ func TestSeriesDataUnmarshalMixed(t *testing.T) {
 	require.Equal(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), sd.Ts[0])
 	require.Equal(t, time.UnixMicro(epoch), sd.Ts[1])
 }
+
+func TestSeriesDataUnmarshalWithStatus(t *testing.T) {
+	var sd SeriesData
+	raw := `{"id":5,"ts":["2026-01-01T00:00:00Z"],"values":[10],"status":[1]}`
+	require.NoError(t, json.Unmarshal([]byte(raw), &sd))
+	require.Equal(t, []Status{StatusValid}, sd.Status)
+}
+
+func TestSeriesDataUnmarshalStatusLengthMismatch(t *testing.T) {
+	var sd SeriesData
+	raw := `{"id":5,"ts":["2026-01-01T00:00:00Z","2026-01-02T00:00:00Z"],"values":[10,20],"status":[1]}`
+	err := json.Unmarshal([]byte(raw), &sd)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "same length")
+}
+
+func TestAddDataWithStatus(t *testing.T) {
+	r := newFakeQuestRepo()
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	pts := []DataPoint{
+		{Ts: ts, Value: 1.5, Status: statusPtr(StatusValid)},
+		{Ts: ts.Add(time.Hour), Value: 2.5},
+	}
+	require.NoError(t, svc.AddData(context.Background(), 1, pts, 1, false))
+	require.Len(t, r.data[1], 2)
+	require.NotNil(t, r.data[1][0].Status)
+	require.Equal(t, StatusValid, *r.data[1][0].Status)
+	require.Nil(t, r.data[1][1].Status)
+}
+
+func TestAddDataBatchWithStatus(t *testing.T) {
+	r := newFakeQuestRepo()
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	series := []SeriesData{
+		{
+			ID:     1,
+			Ts:     []time.Time{ts, ts.Add(time.Hour)},
+			Values: []float64{1, 2},
+			Status: []Status{StatusValid, StatusNoisy},
+		},
+	}
+	require.NoError(t, svc.AddDataBatch(context.Background(), series, 1, false))
+	require.Len(t, r.data[1], 2)
+	require.NotNil(t, r.data[1][0].Status)
+	require.Equal(t, StatusValid, *r.data[1][0].Status)
+	require.NotNil(t, r.data[1][1].Status)
+	require.Equal(t, StatusNoisy, *r.data[1][1].Status)
+}
+
+func TestQueryDataIncludesStatus(t *testing.T) {
+	r := newFakeQuestRepo()
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	r.data[1] = []DataPoint{
+		{Ts: ts, Value: 1, Status: statusPtr(StatusValid)},
+		{Ts: ts.Add(time.Hour), Value: 2},
+	}
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	data, err := svc.QueryData(context.Background(), 1, TimeseriesQuery{}, 1)
+	require.NoError(t, err)
+	require.Len(t, data.Series, 1)
+	require.Equal(t, []Status{StatusValid, StatusNotSet}, data.Series[0].Status)
+
+	raw, err := json.Marshal(data)
+	require.NoError(t, err)
+	var out struct {
+		TsType string `json:"ts_type"`
+		Series []struct {
+			ID  int32     `json:"id"`
+			Ts  []string  `json:"ts"`
+			Val []float64 `json:"values"`
+			St  []int8    `json:"status"`
+		} `json:"series"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &out))
+	require.Equal(t, []int8{1, 0}, out.Series[0].St)
+}
+
+func TestQueryDataRollupOmitsStatus(t *testing.T) {
+	r := newFakeQuestRepo()
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	r.data[1] = []DataPoint{{Ts: ts, Value: 1, Status: statusPtr(StatusValid)}}
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	data, err := svc.QueryData(context.Background(), 1, TimeseriesQuery{SampleInterval: "1h"}, 1)
+	require.NoError(t, err)
+	require.Empty(t, data.Series[0].Status)
+
+	raw, err := json.Marshal(data)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), `"status"`)
+}
+
+func TestQueryDataBatchIncludesStatus(t *testing.T) {
+	r := newFakeQuestRepo()
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	r.data[1] = []DataPoint{
+		{Ts: ts, Value: 1, Status: statusPtr(StatusOverrange)},
+		{Ts: ts.Add(time.Hour), Value: 2},
+	}
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	data, err := svc.QueryDataBatch(context.Background(), TimeseriesDataQuery{IDs: []int32{1}}, 1)
+	require.NoError(t, err)
+	require.Len(t, data.Series, 1)
+	require.Equal(t, []Status{StatusOverrange, StatusNotSet}, data.Series[0].Status)
+
+	raw, err := json.Marshal(data)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"status":[5,0]`)
+}
+
+func TestMarshalOmitsStatusWhenEmpty(t *testing.T) {
+	sd := SeriesData{
+		ID:     1,
+		Ts:     []time.Time{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+		Values: []float64{1},
+	}
+	raw, err := json.Marshal(sd)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), `"status"`)
+}
+
+func statusPtr(s Status) *Status { return &s }

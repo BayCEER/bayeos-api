@@ -13,6 +13,10 @@ import (
 // ErrNotTimeseries is returned when a node exists but is not a Timeseries.
 var ErrNotTimeseries = errors.New("node is not a timeseries")
 
+// ErrNoResolution is returned when gap detection requires a resolution value
+// that neither the node metadata nor an explicit threshold_minutes provides.
+var ErrNoResolution = errors.New("node metadata requires a resolution value, or provide threshold_minutes")
+
 // TimeseriesService exposes the plugin's operations on top of the shared node
 // tree and the QuestDB data repo.
 type TimeseriesService interface {
@@ -27,6 +31,7 @@ type TimeseriesService interface {
 	QueryData(ctx context.Context, id int32, q TimeseriesQuery, userID int32) (*TimeseriesData, error)
 	QueryDataBatch(ctx context.Context, q TimeseriesDataQuery, userID int32) (*TimeseriesBatchData, error)
 	GetStats(ctx context.Context, id int32, q TimeseriesStatsQuery, userID int32) (*TimeseriesStats, error)
+	GetGaps(ctx context.Context, id int32, q TimeseriesGapsQuery, userID int32) ([]GapInfo, error)
 }
 
 type timeseriesService struct {
@@ -186,22 +191,27 @@ func filterInvalidDataPoints(pts []DataPoint) []DataPoint {
 }
 
 // filterInvalidSeries drops data points with invalid timestamps from each
-// series, keeping the parallel ts/values arrays in lockstep.
+// series, keeping the parallel ts/values/status arrays in lockstep.
 func filterInvalidSeries(series []SeriesData) []SeriesData {
 	out := make([]SeriesData, 0, len(series))
 	for i := range series {
 		s := series[i]
 		keptTs := make([]time.Time, 0, len(s.Ts))
 		keptVal := make([]float64, 0, len(s.Values))
+		keptStatus := make([]Status, 0, len(s.Status))
 		for j := range s.Ts {
 			if isInvalidTimestamp(s.Ts[j]) {
 				continue
 			}
 			keptTs = append(keptTs, s.Ts[j])
 			keptVal = append(keptVal, s.Values[j])
+			if len(s.Status) > 0 {
+				keptStatus = append(keptStatus, s.Status[j])
+			}
 		}
 		s.Ts = keptTs
 		s.Values = keptVal
+		s.Status = keptStatus
 		out = append(out, s)
 	}
 	return out
@@ -243,11 +253,24 @@ func (s *timeseriesService) QueryData(ctx context.Context, id int32, q Timeserie
 
 	ts := make([]time.Time, 0, len(pts))
 	values := make([]float64, 0, len(pts))
+	// Per-point status is only available on the raw table; rollup views carry
+	// no status, so the field is omitted there.
+	var status []Status
+	if q.SampleInterval == "" {
+		status = make([]Status, 0, len(pts))
+	}
 	for _, p := range pts {
 		ts = append(ts, p.Ts)
 		values = append(values, p.Value)
+		if status != nil {
+			if p.Status != nil {
+				status = append(status, *p.Status)
+			} else {
+				status = append(status, StatusNotSet)
+			}
+		}
 	}
-	series := []SeriesData{{ID: id, Ts: ts, Values: values}}
+	series := []SeriesData{{ID: id, Ts: ts, Values: values, Status: status}}
 	return newTimeseriesData(q.SampleInterval, sampleFunc, series, tsType), nil
 }
 
@@ -355,16 +378,54 @@ func (s *timeseriesService) GetStats(ctx context.Context, id int32, q Timeseries
 				return nil, err
 			}
 			stats.Completeness = complete
-
-			threshold := int(resolutionSec / 60 * 2)
-			if threshold < 1 {
-				threshold = 1
-			}
-			if gaps, err := s.queries.DetectGaps(ctx, id, threshold, q.From, q.To); err == nil {
-				stats.Gaps = gaps
-			}
 		}
 	}
 
 	return stats, nil
+}
+
+// GetGaps returns the gaps of a timeseries detected on the raw series table.
+// The gap threshold defaults to twice the sampling period derived from the
+// node's resolution metadata and can be overridden with threshold_minutes.
+func (s *timeseriesService) GetGaps(ctx context.Context, id int32, q TimeseriesGapsQuery, userID int32) (gaps []GapInfo, err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.get_gaps")
+	defer func() { endServiceSpan(span, err) }()
+	setNodeID(span, id)
+	setUserID(span, userID)
+
+	n, err := s.Get(ctx, id, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	threshold, err := resolveGapThreshold(q.ThresholdMinutes, n.Metadata.Map())
+	if err != nil {
+		return nil, err
+	}
+
+	limit := 20
+	if q.Limit != nil {
+		limit = *q.Limit
+	}
+	return s.queries.DetectGaps(ctx, id, threshold, q.From, q.To, limit)
+}
+
+// resolveGapThreshold returns the gap detection threshold in minutes. An
+// explicit override wins; otherwise the value is derived from the node's
+// resolution metadata (twice the sampling period, at least 1 minute). When
+// neither is available ErrNoResolution is returned.
+func resolveGapThreshold(override *int, metadata map[string]any) (int, error) {
+	if override != nil && *override > 0 {
+		return *override, nil
+	}
+	if resolution, ok := metadata["resolution"]; ok {
+		if resolutionSec, ok := resolution.(float64); ok && resolutionSec > 0 {
+			threshold := int(resolutionSec / 60 * 2)
+			if threshold < 1 {
+				threshold = 1
+			}
+			return threshold, nil
+		}
+	}
+	return 0, ErrNoResolution
 }

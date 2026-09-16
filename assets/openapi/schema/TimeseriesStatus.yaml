@@ -1,0 +1,35 @@
+type: integer
+format: int32
+description: |
+  Validation status of a data point.
+  Value meanings:
+  - `-1`: removed
+  - `0`: not set
+  - `1`: valid
+  - `2`: valid with remarks
+  - `3`: noisy
+  - `4`: unknown
+  - `5`: overrange
+  - `6`: outside limits
+  - `7`: invalid
+enum: [-1, 0, 1, 2, 3, 4, 5, 6, 7]
+x-enum-varnames:
+  - removed
+  - not_set
+  - valid
+  - valid_with_remarks
+  - noisy
+  - unknown
+  - overrange
+  - outside_limits
+  - invalid
+x-enum-descriptions:
+  - The value was removed
+  - Not set (newly imported or automatically inserted data)
+  - Data validated as valid and suitable for analysis
+  - Valid data with special conditions; still suitable for general analysis
+  - Data validated as noisy and unsuitable for analysis
+  - Uncertain data that is unsuitable for analysis
+  - The measured value was overrange
+  - The measured value was outside the limits
+  - Data validated as invalid and unsuitable for general analysis

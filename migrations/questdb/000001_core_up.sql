@@ -1,12 +1,11 @@
 CREATE TABLE IF NOT EXISTS series (
-  id SYMBOL INDEX ,
+  id SYMBOL INDEX TYPE POSTING INCLUDE (value, status),
   ts TIMESTAMP,
   value DOUBLE,
   status byte
-) TIMESTAMP(ts) PARTITION BY DAY WAL
+) TIMESTAMP(ts) PARTITION BY MONTH WAL
 DEDUP UPSERT KEYS(id, ts);
 
-// TODO: Add restriction on status to only allow valid and not deleted data 
 CREATE MATERIALIZED VIEW IF NOT EXISTS series_view_1h AS
 SELECT
   id,
@@ -18,7 +17,7 @@ SELECT
   sum(value) AS sum,
   count(value) AS count,
   avg(value) AS avg
-FROM series
+FROM series where status in (0,1,2) 
 SAMPLE BY 1h;
 
 CREATE MATERIALIZED VIEW  IF NOT EXISTS series_view_1d AS

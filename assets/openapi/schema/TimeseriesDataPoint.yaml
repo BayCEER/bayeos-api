@@ -13,6 +13,11 @@ properties:
     type: number
     format: float
     description: Measurement value
+  status:
+    $ref: ./TimeseriesStatus.yaml
+    description: >
+      Optional validation status of the data point; when present it is stored
+      with the point.
 required:
   - ts
   - value

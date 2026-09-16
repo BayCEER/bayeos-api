@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -26,7 +27,7 @@ type QuestRepo interface {
 
 	ComputeStats(ctx context.Context, nodeID int32, from, to *time.Time, agg string) (*TimeseriesStats, error)
 	ComputeCompleteness(ctx context.Context, nodeID int32, resolutionSec int, from, to *time.Time) (*CompletenessStats, error)
-	DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time) ([]GapInfo, error)
+	DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time, limit int) ([]GapInfo, error)
 }
 
 // questRepo persists observations in the QuestDB series table. The series id is
@@ -50,6 +51,13 @@ func (r *questRepo) Insert(ctx context.Context, nodeID int32, pts []DataPoint) e
 
 	batch := &pgx.Batch{}
 	for _, p := range pts {
+		if p.Status != nil {
+			batch.Queue(
+				"INSERT INTO series (id, ts, value, status) VALUES ($1, $2, $3, $4)",
+				fmt.Sprintf("%d", nodeID), p.Ts, p.Value, *p.Status,
+			)
+			continue
+		}
 		batch.Queue(
 			"INSERT INTO series (id, ts, value) VALUES ($1, $2, $3)",
 			fmt.Sprintf("%d", nodeID), p.Ts, p.Value,
@@ -74,7 +82,17 @@ func (r *questRepo) InsertBatch(ctx context.Context, series []SeriesData) error 
 
 	batch := &pgx.Batch{}
 	for _, s := range series {
+		if len(s.Status) > 0 && len(s.Status) != len(s.Ts) {
+			return fmt.Errorf("series %d: status must have the same length as ts", s.ID)
+		}
 		for i := range s.Ts {
+			if len(s.Status) > 0 {
+				batch.Queue(
+					"INSERT INTO series (id, ts, value, status) VALUES ($1, $2, $3, $4)",
+					fmt.Sprintf("%d", s.ID), s.Ts[i], s.Values[i], s.Status[i],
+				)
+				continue
+			}
 			batch.Queue(
 				"INSERT INTO series (id, ts, value) VALUES ($1, $2, $3)",
 				fmt.Sprintf("%d", s.ID), s.Ts[i], s.Values[i],
@@ -125,19 +143,25 @@ func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time
 	ctx, span := r.span(ctx, "timeseries.query")
 	defer span.End()
 
-	timeCol, valueCol, table := "ts", "value", rawTable
+	timeCol, valueCol, statusCol, table := "ts", "value", "cast(status as int) AS status", rawTable
 	switch interval {
 	case "":
 		// raw series table
 	case "1h", "1d", "1M", "1y":
 		// rollup views expose bucket_ts + aggregate columns named after the
 		// sample function; the requested function selects the value column.
-		timeCol, valueCol, table = "bucket_ts", sampleFunc, "series_view_"+interval
+		// Rollup views carry no per-point status.
+		timeCol, valueCol, statusCol, table = "bucket_ts", sampleFunc, "", "series_view_"+interval
 	default:
 		return nil, fmt.Errorf("unsupported sample_interval %q", interval)
 	}
 
-	query := fmt.Sprintf("SELECT %s, %s FROM %s WHERE id = $1", timeCol, valueCol, table)
+	statusExpr := ""
+	if statusCol != "" {
+		statusExpr = ", " + statusCol
+	}
+
+	query := fmt.Sprintf("SELECT %s, %s%s FROM %s WHERE id = $1", timeCol, valueCol, statusExpr, table)
 	args := []interface{}{fmt.Sprintf("%d", nodeID)}
 	if from != nil {
 		args = append(args, *from)
@@ -165,7 +189,17 @@ func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time
 	pts := []DataPoint{}
 	for rows.Next() {
 		var p DataPoint
-		if err := rows.Scan(&p.Ts, &p.Value); err != nil {
+		var err error
+		if statusCol != "" {
+			var st pgtype.Int4
+			if err = rows.Scan(&p.Ts, &p.Value, &st); err == nil && st.Valid {
+				status := Status(st.Int32)
+				p.Status = &status
+			}
+		} else {
+			err = rows.Scan(&p.Ts, &p.Value)
+		}
+		if err != nil {
 			return nil, err
 		}
 		pts = append(pts, p)
@@ -190,14 +224,15 @@ func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.
 		return []SeriesData{}, nil
 	}
 
-	timeCol, valueCol, table := "ts", "value", rawTable
+	timeCol, valueCol, statusCol, table := "ts", "value", "cast(status as int) AS st", rawTable
 	switch interval {
 	case "":
 		// raw series table
 	case "1h", "1d", "1M", "1y":
 		// rollup views expose bucket_ts + aggregate columns named after the
 		// sample function; the requested function selects the value column.
-		timeCol, valueCol, table = "bucket_ts", sampleFunc, "series_view_"+interval
+		// Rollup views carry no per-point status.
+		timeCol, valueCol, statusCol, table = "bucket_ts", sampleFunc, "", "series_view_"+interval
 	default:
 		return nil, fmt.Errorf("unsupported sample_interval %q", interval)
 	}
@@ -220,6 +255,13 @@ func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.
 		where += fmt.Sprintf(" AND %s <= $%d", timeCol, len(args))
 	}
 
+	statusExpr := ""
+	outerSelect := "t, v"
+	if statusCol != "" {
+		statusExpr = ", " + statusCol
+		outerSelect = "t, v, st"
+	}
+
 	// The per-series limit keeps the most recent N points per series, mirroring
 	// the single-series behaviour: select the newest rows first, then reorder
 	// ascending.
@@ -227,13 +269,13 @@ func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.
 	if limit != nil && *limit > 0 {
 		args = append(args, *limit)
 		query = fmt.Sprintf(`WITH ranked AS (
-			SELECT id, %[1]s AS t, %[2]s AS v,
+			SELECT id, %[1]s AS t, %[2]s AS v%[3]s,
 				row_number() OVER (PARTITION BY id ORDER BY %[1]s DESC) AS rn
-			FROM %[3]s %[4]s
+			FROM %[4]s %[5]s
 		)
-		SELECT CAST(id AS INT) AS id, t, v FROM ranked WHERE rn <= $%[5]d ORDER BY id, t`, timeCol, valueCol, table, where, len(args))
+		SELECT CAST(id AS INT) AS id, %[6]s FROM ranked WHERE rn <= $%[7]d ORDER BY id, t`, timeCol, valueCol, statusExpr, table, where, outerSelect, len(args))
 	} else {
-		query = fmt.Sprintf("SELECT CAST(id AS INT) AS id, %[1]s AS t, %[2]s AS v FROM %[3]s %[4]s ORDER BY id, %[1]s", timeCol, valueCol, table, where)
+		query = fmt.Sprintf("SELECT CAST(id AS INT) AS id, %[1]s AS t, %[2]s AS v%[3]s FROM %[4]s %[5]s ORDER BY id, %[1]s", timeCol, valueCol, statusExpr, table, where)
 	}
 
 	rows, err := r.conn.Query(ctx, query, args...)
@@ -247,7 +289,17 @@ func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.
 	for rows.Next() {
 		var id int32
 		var p DataPoint
-		if err := rows.Scan(&id, &p.Ts, &p.Value); err != nil {
+		var err error
+		if statusCol != "" {
+			var st pgtype.Int4
+			if err = rows.Scan(&id, &p.Ts, &p.Value, &st); err == nil && st.Valid {
+				status := Status(st.Int32)
+				p.Status = &status
+			}
+		} else {
+			err = rows.Scan(&id, &p.Ts, &p.Value)
+		}
+		if err != nil {
 			return nil, err
 		}
 		s, ok := seriesByID[id]
@@ -258,6 +310,13 @@ func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.
 		}
 		s.Ts = append(s.Ts, p.Ts)
 		s.Values = append(s.Values, p.Value)
+		if statusCol != "" {
+			if p.Status != nil {
+				s.Status = append(s.Status, *p.Status)
+			} else {
+				s.Status = append(s.Status, StatusNotSet)
+			}
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -362,9 +421,13 @@ func (r *questRepo) ComputeCompleteness(ctx context.Context, nodeID int32, resol
 	return &c, nil
 }
 
-func (r *questRepo) DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time) ([]GapInfo, error) {
+func (r *questRepo) DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time, limit int) ([]GapInfo, error) {
 	ctx, span := r.span(ctx, "timeseries.detect_gaps")
 	defer span.End()
+
+	if limit < 1 {
+		limit = 20
+	}
 
 	args := []interface{}{fmt.Sprintf("%d", nodeID), thresholdMinutes}
 	where := ""
@@ -386,7 +449,7 @@ func (r *questRepo) DetectGaps(ctx context.Context, nodeID int32, thresholdMinut
 	FROM ordered
 	WHERE prev_ts IS NOT NULL AND (ts - prev_ts) / 1000000 / 60 > $2
 	ORDER BY duration_minutes DESC
-	LIMIT 20`
+	LIMIT ` + fmt.Sprintf("%d", limit)
 
 	rows, err := r.conn.Query(ctx, query, args...)
 	if err != nil {

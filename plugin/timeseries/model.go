@@ -9,17 +9,46 @@ import (
 // Kind is the node.kind value used to identify timeseries nodes.
 const Kind = "Timeseries"
 
+// Status identifies the validation state of a timeseries data point.
+type Status int8
+
+const (
+	// StatusRemoved means the value was removed
+	StatusRemoved Status = -1
+	// StatusNotSet means newly imported or automatically inserted data that
+	StatusNotSet Status = 0
+	// StatusValid means data validated as valid and suitable for analysis.
+	StatusValid Status = 1
+	// StatusValidWithRemarks means valid data with special conditions; it is
+	// still suitable for general analysis.
+	StatusValidWithRemarks Status = 2
+	// StatusNoisy means data validated as noisy and unsuitable for analysis.
+	StatusNoisy Status = 3
+	// StatusUnknown means uncertain data that is unsuitable for analysis.
+	StatusUnknown Status = 4
+	// StatusOverrange means the measured value was overrange.
+	StatusOverrange Status = 5
+	// StatusOutsideLimits means the measured value was outside the limits.
+	StatusOutsideLimits Status = 6
+	// StatusInvalid means data validated as invalid and unsuitable for general analysis.
+	StatusInvalid Status = 7
+)
+
 // DataPoint is a single timestamped value stored in the QuestDB series table.
 // The value is a strict float64 matching the DOUBLE column of the series table.
+// Status is optional: it is parsed from a write body and populated by raw
+// queries; a nil Status means the stored row has no status set.
 type DataPoint struct {
-	Ts    time.Time `json:"ts"`
-	Value float64   `json:"value"`
+	Ts     time.Time `json:"ts"`
+	Value  float64   `json:"value"`
+	Status *Status   `json:"status,omitempty"`
 }
 
 func (p *DataPoint) UnmarshalJSON(b []byte) error {
 	var raw struct {
-		Ts    json.RawMessage `json:"ts"`
-		Value float64         `json:"value"`
+		Ts     json.RawMessage `json:"ts"`
+		Value  float64         `json:"value"`
+		Status *Status         `json:"status"`
 	}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
@@ -30,6 +59,7 @@ func (p *DataPoint) UnmarshalJSON(b []byte) error {
 	}
 	p.Ts = ts
 	p.Value = raw.Value
+	p.Status = raw.Status
 	return nil
 }
 
@@ -39,7 +69,7 @@ func (p *DataPoint) UnmarshalJSON(b []byte) error {
 type StatusPoint struct {
 	Ts     time.Time `json:"ts" binding:"required"`
 	Value  float64   `json:"value" binding:"required"`
-	Status int8      `json:"status" binding:"required"`
+	Status Status    `json:"status" binding:"required"`
 }
 
 // TimeseriesCreate is the body of POST <context>/timeseries. The kind is fixed to
@@ -101,12 +131,29 @@ type TimeseriesStatsQuery struct {
 	Agg  string     `form:"agg"`
 }
 
+// TimeseriesGapsQuery are the query parameters of GET <context>/timeseries/{id}/gaps.
+type TimeseriesGapsQuery struct {
+	From *time.Time `form:"from"`
+	To   *time.Time `form:"to"`
+	// ThresholdMinutes overrides the gap threshold derived from the node's
+	// resolution metadata. When set, the node's resolution is not required.
+	// Optional.
+	ThresholdMinutes *int `form:"threshold_minutes" binding:"omitempty,gt=0"`
+	// Limit caps the number of gaps returned (longest first). Optional,
+	// defaults to 20.
+	Limit *int `form:"limit" binding:"omitempty,gt=0"`
+}
+
 // SeriesData holds the points of a single series within a batch response.
-// Ts and Values are parallel arrays; values[i] is the reading at Ts[i].
+// Ts, Values and Status are parallel arrays; values[i] is the reading at
+// Ts[i] and status[i] (when present) is its validation status. Status is
+// included for raw queries and present in write bodies; it is omitted when a
+// rollup interval is applied.
 type SeriesData struct {
 	ID     int32       `json:"id"`
 	Ts     []time.Time `json:"ts"`
 	Values []float64   `json:"values"`
+	Status []Status    `json:"status,omitempty"`
 }
 
 func (s *SeriesData) UnmarshalJSON(b []byte) error {
@@ -114,12 +161,17 @@ func (s *SeriesData) UnmarshalJSON(b []byte) error {
 		ID     int32             `json:"id"`
 		Ts     []json.RawMessage `json:"ts"`
 		Values []float64         `json:"values"`
+		Status []Status          `json:"status"`
 	}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
 	}
+	if len(raw.Status) > 0 && len(raw.Status) != len(raw.Ts) {
+		return fmt.Errorf("status must have the same length as ts")
+	}
 	s.ID = raw.ID
 	s.Values = raw.Values
+	s.Status = raw.Status
 	s.Ts = make([]time.Time, len(raw.Ts))
 	for i, t := range raw.Ts {
 		ts, err := decodeTimestamp(t)
@@ -162,11 +214,13 @@ func (b TimeseriesBatchData) MarshalJSON() ([]byte, error) {
 				ts = append(ts, t)
 			}
 		}
-		series = append(series, map[string]any{
+		entry := map[string]any{
 			"id":     s.ID,
 			"ts":     ts,
 			"values": s.Values,
-		})
+		}
+		addStatusIfPresent(entry, s.Status)
+		series = append(series, entry)
 	}
 
 	payload := map[string]any{
@@ -213,11 +267,13 @@ func (d TimeseriesData) MarshalJSON() ([]byte, error) {
 				ts = append(ts, t)
 			}
 		}
-		series = append(series, map[string]any{
+		entry := map[string]any{
 			"id":     s.ID,
 			"ts":     ts,
 			"values": s.Values,
-		})
+		}
+		addStatusIfPresent(entry, s.Status)
+		series = append(series, entry)
 	}
 
 	payload := map[string]any{
@@ -256,6 +312,14 @@ func decodeTimestamp(raw json.RawMessage) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("must be RFC3339 string or epoch microseconds")
 }
 
+// addStatusIfPresent adds the parallel status array to a series entry when the
+// series carries statuses (raw queries); rollup series omit the field.
+func addStatusIfPresent(entry map[string]any, status []Status) {
+	if len(status) > 0 {
+		entry["status"] = status
+	}
+}
+
 // TimeseriesStats holds statistical metadata computed from QuestDB.
 type TimeseriesStats struct {
 	Count        int64              `json:"count"`
@@ -266,7 +330,6 @@ type TimeseriesStats struct {
 	Mean         float64            `json:"mean"`
 	Stddev       *float64           `json:"stddev"`
 	Completeness *CompletenessStats `json:"completeness,omitempty"`
-	Gaps         []GapInfo          `json:"gaps,omitempty"`
 }
 
 func (s TimeseriesStats) MarshalJSON() ([]byte, error) {
@@ -279,14 +342,12 @@ func (s TimeseriesStats) MarshalJSON() ([]byte, error) {
 		Mean         *float64           `json:"mean"`
 		Stddev       *float64           `json:"stddev"`
 		Completeness *CompletenessStats `json:"completeness,omitempty"`
-		Gaps         []GapInfo          `json:"gaps,omitempty"`
 	}
 
 	result := statsJSON{
 		Count:        s.Count,
 		Stddev:       s.Stddev,
 		Completeness: s.Completeness,
-		Gaps:         s.Gaps,
 	}
 	if s.Count > 0 {
 		result.FirstTs = &s.FirstTs

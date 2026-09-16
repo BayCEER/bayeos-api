@@ -39,3 +39,11 @@ properties:
             type: number
             format: double
           description: Readings, parallel to ts
+        status:
+          type: array
+          items:
+            $ref: ./TimeseriesStatus.yaml
+          description: >
+            Validation status of each reading, parallel to ts/values; present
+            for raw queries (no sample_interval) only and omitted when a rollup
+            is applied. `0` (not set) marks rows without an explicit status.

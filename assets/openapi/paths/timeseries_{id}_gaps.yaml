@@ -1,0 +1,69 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+get:
+  tags:
+    - Timeseries
+  summary: Detect gaps in a timeseries
+  description: >
+    Detects gaps in a timeseries. Samples are ordered by timestamp and the
+    duration between each consecutive pair is computed in minutes. An interval
+    is reported as a gap when that duration exceeds the threshold, returned
+    longest-first.
+
+    The threshold defaults to twice the sampling period derived from the node's
+    `resolution` metadata in seconds (i.e. `2 * resolution`, for example 2
+    minutes when `resolution` is 60 s), with a minimum of 1 minute. It can be
+    overridden with the `threshold_minutes` query parameter, in which case the
+    `resolution` metadata is not required. Results are capped at `limit` gaps
+    (default 20).
+  security:
+    - JWTAuth: []
+  parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Inclusive lower time bound
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Inclusive upper time bound
+    - name: threshold_minutes
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+      description: >
+        Gap threshold in minutes. When omitted it is derived from the node's
+        `resolution` metadata.
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+      description: Maximum number of gaps returned. Defaults to 20.
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: ../schema/TimeseriesGap.yaml
+    "400":
+      $ref: ../components/GenericError.yaml#/GenericError
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

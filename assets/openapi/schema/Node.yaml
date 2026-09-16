@@ -36,7 +36,7 @@ properties:
         description: Longitude
       resolution:
         type: number
-        description: Sample interval in seconds; enables completeness/gap statistics
+        description: Sample interval in seconds; enables completeness statistics and gap detection
     additionalProperties: true
   created_at:
     readOnly: true

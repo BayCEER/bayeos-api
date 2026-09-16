@@ -1,0 +1,14 @@
+type: object
+description: A detected gap between two consecutive samples of a timeseries.
+properties:
+  start:
+    type: string
+    format: date-time
+    description: Timestamp of the last sample before the gap
+  end:
+    type: string
+    format: date-time
+    description: Timestamp of the next sample after the gap
+  duration_minutes:
+    type: integer
+    description: Length of the gap in minutes
