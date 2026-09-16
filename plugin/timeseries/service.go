@@ -27,7 +27,7 @@ type TimeseriesService interface {
 
 	AddData(ctx context.Context, id int32, pts []DataPoint, userID int32, ignoreInvalid bool) error
 	AddDataBatch(ctx context.Context, series []SeriesData, userID int32, ignoreInvalid bool) error
-	UpdateStatus(ctx context.Context, id int32, pts []StatusPoint, userID int32) error
+
 	QueryData(ctx context.Context, id int32, q TimeseriesQuery, userID int32) (*TimeseriesData, error)
 	QueryDataBatch(ctx context.Context, q TimeseriesDataQuery, userID int32) (*TimeseriesBatchData, error)
 	GetStats(ctx context.Context, id int32, q TimeseriesStatsQuery, userID int32) (*TimeseriesStats, error)
@@ -215,18 +215,6 @@ func filterInvalidSeries(series []SeriesData) []SeriesData {
 		out = append(out, s)
 	}
 	return out
-}
-
-func (s *timeseriesService) UpdateStatus(ctx context.Context, id int32, pts []StatusPoint, userID int32) (err error) {
-	ctx, span := withServiceSpan(ctx, "timeseries.update_status")
-	defer func() { endServiceSpan(span, err) }()
-	setNodeID(span, id)
-	setUserID(span, userID)
-
-	if _, err := s.Get(ctx, id, userID); err != nil {
-		return err
-	}
-	return s.queries.UpsertStatusBatch(ctx, id, pts)
 }
 
 func (s *timeseriesService) QueryData(ctx context.Context, id int32, q TimeseriesQuery, userID int32) (data *TimeseriesData, err error) {

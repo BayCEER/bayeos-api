@@ -164,37 +164,6 @@ func (h *Handlers) AddDataBatch(c *gin.Context) {
 	c.Status(http.StatusCreated)
 }
 
-func (h *Handlers) UpdateStatus(c *gin.Context) {
-	id, err := strings.ParseStringToInt32(c.Param("id"))
-	if err != nil {
-		mw.AbortWithBadRequestError(c, "Invalid id parameter")
-		return
-	}
-	userID, ok := mw.AuthUserIDFromContext(c)
-	if !ok {
-		mw.AbortWithInternalError(c, "user id not found")
-		return
-	}
-	var pts []StatusPoint
-	if err := c.ShouldBindJSON(&pts); err != nil {
-		mw.AbortWithBadRequestError(c, "Invalid request body")
-		return
-	}
-	if len(pts) == 0 {
-		mw.AbortWithBadRequestError(c, "at least one status record is required")
-		return
-	}
-	if err := h.service.UpdateStatus(c.Request.Context(), id, pts, userID); err != nil {
-		if errors.Is(err, ErrNotTimeseries) {
-			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
-			return
-		}
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to update status: %v", err))
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Status updated"})
-}
-
 func (h *Handlers) QueryData(c *gin.Context) {
 	id, err := strings.ParseStringToInt32(c.Param("id"))
 	if err != nil {

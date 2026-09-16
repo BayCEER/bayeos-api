@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -94,10 +95,14 @@ func rowsAffected(res sql.Result, err error) error {
 	return nil
 }
 
+// ErrReadOnlyField is returned when a request tries to update a column that
+// is derived or system-managed (e.g. id, created_at, node_path).
+var ErrReadOnlyField = errors.New("column is read-only")
+
 func (r *SqlRepo) CheckFieldName(i any, colname string) error {
 	col := strings.ToLower(colname)
-	if col == "id" || col == "created_at" {
-		return fmt.Errorf("column is read-only: %s", colname)
+	if col == "id" || col == "created_at" || col == "node_path" {
+		return fmt.Errorf("%w: %s", ErrReadOnlyField, colname)
 	}
 	rt := reflect.TypeOf(i)
 	for i := 0; i < rt.NumField(); i++ {

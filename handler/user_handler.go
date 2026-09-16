@@ -82,6 +82,9 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 			return
 		}
 		if err := h.UserService.UpdateUser(c.Request.Context(), id, &fields); err != nil {
+			if mw.AbortWithBadRequestIfReadOnlyField(c, err) {
+				return
+			}
 			mw.AbortWithInternalError(c, "Failed to update user")
 			return
 		}

@@ -58,7 +58,7 @@ Workflow passes `VERSION=${{ steps.meta.outputs.version || github.sha }}` → se
 ## How to "release"
 
 ```bash
-git tag v0.2.0
+  git tag v0.2.0
 git push origin v0.2.0
 ```
 

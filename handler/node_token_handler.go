@@ -102,6 +102,9 @@ func (h *Handler) UpdateNodeToken(c *gin.Context) {
 			return
 		}
 		if err := h.NodeTokenService.UpdateNodeToken(c.Request.Context(), id, &fields); err != nil {
+			if mw.AbortWithBadRequestIfReadOnlyField(c, err) {
+				return
+			}
 			mw.AbortWithInternalError(c, "Failed to update node token")
 			return
 		}

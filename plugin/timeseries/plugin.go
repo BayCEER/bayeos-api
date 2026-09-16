@@ -37,7 +37,6 @@ func (p *Plugin) Register(h *plugin.Host) error {
 	r.PATCH("/timeseries/:id", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.Update)
 	r.DELETE("/timeseries/:id", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.Delete)
 	r.POST("/timeseries/:id/data", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.AddData)
-	r.PATCH("/timeseries/:id/status", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.UpdateStatus)
 	r.GET("/timeseries/:id/data", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.QueryData)
 	r.GET("/timeseries/:id/stats", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.GetStats)
 	r.GET("/timeseries/:id/gaps", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.GetGaps)

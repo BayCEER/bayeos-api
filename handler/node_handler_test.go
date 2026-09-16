@@ -55,6 +55,23 @@ func TestNodeCRUD(t *testing.T) {
 	require.Equal(t, newNode.ID, node.ID)
 	require.Equal(t, "Springfield", node.DisplayName)
 
+	// PATCH with read-only node_path is rejected and leaves the path unchanged
+	forgedPath := node.NodePath
+	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/bayeos-api/nodes/%d", newNode.ID), bytes.NewBuffer([]byte(`{"node_path":"/forged"}`)), token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d", newNode.ID), nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	err = json.Unmarshal(w.Body.Bytes(), &node)
+	require.NoError(t, err)
+	require.Equal(t, forgedPath, node.NodePath)
+
 	// CREATE node token
 	req, err = NewJWTRequest("POST", fmt.Sprintf("/bayeos-api/nodes/%d/tokens", newNode.ID), nil, token)
 	require.NoError(t, err)

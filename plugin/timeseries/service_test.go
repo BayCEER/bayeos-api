@@ -570,32 +570,6 @@ func TestQueryDataBatchSampleFunc(t *testing.T) {
 	require.Equal(t, "sum", data.SampleFunc)
 }
 
-func TestUpdateStatus(t *testing.T) {
-	r := newFakeQuestRepo()
-	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
-	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
-
-	pts := []StatusPoint{
-		{Ts: base, Value: 1, Status: 1},
-		{Ts: base.Add(time.Hour), Value: 2, Status: 0},
-	}
-	require.NoError(t, svc.UpdateStatus(context.Background(), 1, pts, 1))
-	require.Equal(t, pts, r.status[1])
-}
-
-func TestUpdateStatusNotTimeseries(t *testing.T) {
-	r := newFakeQuestRepo()
-
-	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: "Folder", ParentID: 1}}
-	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
-
-	err := svc.UpdateStatus(context.Background(), 1, []StatusPoint{{Ts: time.Now(), Value: 1, Status: 1}}, 1)
-	require.ErrorIs(t, err, ErrNotTimeseries)
-	require.Empty(t, r.status)
-}
-
 func TestAddDataBatch(t *testing.T) {
 	r := newFakeQuestRepo()
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -686,7 +660,7 @@ func TestDataPointUnmarshalISO(t *testing.T) {
 func TestDataPointUnmarshalEpoch(t *testing.T) {
 	var dp DataPoint
 	epoch := int64(1735689600000000)
-	err := json.Unmarshal([]byte(fmt.Sprintf(`{"ts":%d,"value":2.71}`, epoch)), &dp)
+	err := json.Unmarshal(fmt.Appendf(nil, `{"ts":%d,"value":2.71}`, epoch), &dp)
 	require.NoError(t, err)
 	require.Equal(t, time.UnixMicro(epoch), dp.Ts)
 	require.Equal(t, 2.71, dp.Value)

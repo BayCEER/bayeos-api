@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/BayCEER/bayeos/bayeos-api/repository"
 	log "github.com/BayCEER/bayeos/bayeos-api/logger"
 )
 
@@ -69,6 +70,16 @@ func AbortWithUnauthorizedError(c *gin.Context, message string) {
 func AbortWithNotFoundIfNoRows(c *gin.Context, err error, resource, field, value string) bool {
 	if errors.Is(err, sql.ErrNoRows) {
 		AbortWithNotFoundError(c, resource, field, value)
+		return true
+	}
+	return false
+}
+
+// AbortWithBadRequestIfReadOnlyField aborts with a 400 and returns true if err
+// wraps the repository read-only column error.
+func AbortWithBadRequestIfReadOnlyField(c *gin.Context, err error) bool {
+	if errors.Is(err, repository.ErrReadOnlyField) {
+		AbortWithBadRequestError(c, "Invalid request body: read-only field provided")
 		return true
 	}
 	return false

@@ -237,6 +237,9 @@ func (h *Handler) UpdateNode(c *gin.Context) {
 			return
 		}
 		if err := h.NodeService.UpdateNode(c.Request.Context(), id, &fields); err != nil {
+			if mw.AbortWithBadRequestIfReadOnlyField(c, err) {
+				return
+			}
 			mw.AbortWithInternalError(c, fmt.Sprintf("Failed to update node: %v", err))
 			return
 		}
