@@ -261,6 +261,9 @@ func migrateQuestDB(qdb *pgx.Conn, migrationPath string) error {
 		return err
 	}
 	for _, file := range files {
+		if !strings.HasSuffix(strings.ToLower(file.Name()), "_up.sql") {
+			continue
+		}
 		var fileCounter int
 		_, err := fmt.Sscanf(file.Name(), "%06d", &fileCounter)
 		if err != nil {

@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS series (
-  id SYMBOL INDEX,
+  id SYMBOL CAPACITY 16384 CACHE INDEX,
   ts TIMESTAMP,
   value DOUBLE,
   status byte
