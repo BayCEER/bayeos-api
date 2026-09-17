@@ -22,8 +22,8 @@ type QuestRepo interface {
 	Insert(ctx context.Context, nodeID int32, pts []DataPoint) error
 	InsertBatch(ctx context.Context, series []SeriesData) error
 	UpsertStatusBatch(ctx context.Context, nodeID int32, pts []StatusPoint) error
-	Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int) ([]DataPoint, error)
-	QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, limit *int) ([]SeriesData, error)
+	Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []Status) ([]DataPoint, error)
+	QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []Status) ([]SeriesData, error)
 
 	ComputeStats(ctx context.Context, nodeID int32, from, to *time.Time, agg string) (*TimeseriesStats, error)
 	ComputeCompleteness(ctx context.Context, nodeID int32, resolutionSec int, from, to *time.Time) (*CompletenessStats, error)
@@ -51,16 +51,16 @@ func (r *questRepo) Insert(ctx context.Context, nodeID int32, pts []DataPoint) e
 
 	batch := &pgx.Batch{}
 	for _, p := range pts {
-		if p.Status != nil {
-			batch.Queue(
-				"INSERT INTO series (id, ts, value, status) VALUES ($1, $2, $3, $4)",
-				fmt.Sprintf("%d", nodeID), p.Ts, p.Value, *p.Status,
-			)
-			continue
+		// The status column is always written explicitly; a point without a
+		// status is stored as StatusNotSet so that the value is never NULL.
+		status := p.Status
+		if status == nil {
+			s := StatusNotSet
+			status = &s
 		}
 		batch.Queue(
-			"INSERT INTO series (id, ts, value) VALUES ($1, $2, $3)",
-			fmt.Sprintf("%d", nodeID), p.Ts, p.Value,
+			"INSERT INTO series (id, ts, value, status) VALUES ($1, $2, $3, $4)",
+			fmt.Sprintf("%d", nodeID), p.Ts, p.Value, *status,
 		)
 	}
 	br := r.conn.SendBatch(ctx, batch)
@@ -86,16 +86,15 @@ func (r *questRepo) InsertBatch(ctx context.Context, series []SeriesData) error 
 			return fmt.Errorf("series %d: status must have the same length as ts", s.ID)
 		}
 		for i := range s.Ts {
+			// The status column is always written explicitly; a series without
+			// a status array is stored as StatusNotSet so the value is never NULL.
+			status := StatusNotSet
 			if len(s.Status) > 0 {
-				batch.Queue(
-					"INSERT INTO series (id, ts, value, status) VALUES ($1, $2, $3, $4)",
-					fmt.Sprintf("%d", s.ID), s.Ts[i], s.Values[i], s.Status[i],
-				)
-				continue
+				status = s.Status[i]
 			}
 			batch.Queue(
-				"INSERT INTO series (id, ts, value) VALUES ($1, $2, $3)",
-				fmt.Sprintf("%d", s.ID), s.Ts[i], s.Values[i],
+				"INSERT INTO series (id, ts, value, status) VALUES ($1, $2, $3, $4)",
+				fmt.Sprintf("%d", s.ID), s.Ts[i], s.Values[i], status,
 			)
 		}
 	}
@@ -139,7 +138,7 @@ func (r *questRepo) UpsertStatusBatch(ctx context.Context, nodeID int32, pts []S
 	return nil
 }
 
-func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int) ([]DataPoint, error) {
+func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []Status) ([]DataPoint, error) {
 	ctx, span := r.span(ctx, "timeseries.query")
 	defer span.End()
 
@@ -170,6 +169,17 @@ func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time
 	if to != nil {
 		args = append(args, *to)
 		query += fmt.Sprintf(" AND %s <= $%d", timeCol, len(args))
+	}
+
+	// The status filter only applies to raw queries; rollup views carry no
+	// per-point status column.
+	if len(statusFilter) > 0 && statusCol != "" {
+		phs := make([]string, len(statusFilter))
+		for i, s := range statusFilter {
+			args = append(args, int(s))
+			phs[i] = fmt.Sprintf("$%d", len(args))
+		}
+		query += " AND status IN (" + strings.Join(phs, ", ") + ")"
 	}
 
 	// Return the most recent points when a limit is given, in ascending order.
@@ -216,7 +226,7 @@ func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time
 	return pts, nil
 }
 
-func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, limit *int) ([]SeriesData, error) {
+func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []Status) ([]SeriesData, error) {
 	ctx, span := r.span(ctx, "timeseries.query_batch")
 	defer span.End()
 
@@ -253,6 +263,17 @@ func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.
 	if to != nil {
 		args = append(args, *to)
 		where += fmt.Sprintf(" AND %s <= $%d", timeCol, len(args))
+	}
+
+	// The status filter only applies to raw queries; rollup views carry no
+	// per-point status column.
+	if len(statusFilter) > 0 && statusCol != "" {
+		phs := make([]string, len(statusFilter))
+		for i, s := range statusFilter {
+			args = append(args, int(s))
+			phs[i] = fmt.Sprintf("$%d", len(args))
+		}
+		where += " AND status IN (" + strings.Join(phs, ", ") + ")"
 	}
 
 	statusExpr := ""

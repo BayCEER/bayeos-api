@@ -180,6 +180,12 @@ func (h *Handlers) QueryData(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid query parameters")
 		return
 	}
+	statusFilter, err := queryStatusFilter(c)
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid status_filter parameter")
+		return
+	}
+	q.StatusFilter = statusFilter
 	data, err := h.service.QueryData(c.Request.Context(), id, q, userID)
 	if err != nil {
 		if errors.Is(err, ErrNotTimeseries) {
@@ -213,6 +219,12 @@ func (h *Handlers) QueryDataBatch(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "at least one ids value is required")
 		return
 	}
+	statusFilter, err := queryStatusFilter(c)
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid status_filter parameter")
+		return
+	}
+	q.StatusFilter = statusFilter
 	data, err := h.service.QueryDataBatch(c.Request.Context(), q, userID)
 	if err != nil {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to query data: %v", err))
@@ -293,4 +305,19 @@ func queryBoolDefault(c *gin.Context, key string, def bool) bool {
 		return def
 	}
 	return b
+}
+
+// queryStatusFilter parses the comma-separated "status_filter" query parameter
+// into a status slice. An absent or empty parameter returns an empty slice,
+// which the service resolves to the default [0,1,2].
+func queryStatusFilter(c *gin.Context) ([]Status, error) {
+	raw, err := strings.ParseCSVToInt32(c.Query("status_filter"))
+	if err != nil {
+		return nil, err
+	}
+	filter := make([]Status, len(raw))
+	for i, v := range raw {
+		filter[i] = Status(v)
+	}
+	return filter, nil
 }

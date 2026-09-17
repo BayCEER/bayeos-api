@@ -234,7 +234,11 @@ func (s *timeseriesService) QueryData(ctx context.Context, id int32, q Timeserie
 	if err != nil {
 		return nil, err
 	}
-	pts, err := s.queries.Query(ctx, id, q.From, q.To, q.SampleInterval, sampleFunc, q.Limit)
+	statusFilter, err := resolveStatusFilter(q.StatusFilter)
+	if err != nil {
+		return nil, err
+	}
+	pts, err := s.queries.Query(ctx, id, q.From, q.To, q.SampleInterval, sampleFunc, q.Limit, statusFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -275,6 +279,10 @@ func (s *timeseriesService) QueryDataBatch(ctx context.Context, q TimeseriesData
 	if err != nil {
 		return nil, err
 	}
+	statusFilter, err := resolveStatusFilter(q.StatusFilter)
+	if err != nil {
+		return nil, err
+	}
 
 	// Only include timeseries the caller may read; unknown, non-timeseries and
 	// non-readable ids are silently skipped rather than failing the whole batch.
@@ -285,7 +293,7 @@ func (s *timeseriesService) QueryDataBatch(ctx context.Context, q TimeseriesData
 		}
 	}
 
-	series, err := s.queries.QueryBatch(ctx, readable, q.From, q.To, q.SampleInterval, sampleFunc, q.Limit)
+	series, err := s.queries.QueryBatch(ctx, readable, q.From, q.To, q.SampleInterval, sampleFunc, q.Limit, statusFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -327,6 +335,21 @@ func resolveSampleFunc(interval, sampleFunc string) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported sample_func %q", sampleFunc)
 	}
+}
+
+// resolveStatusFilter defaults an empty filter to the statuses that feed the
+// rollup views (not set, valid, valid with remarks) and rejects any value
+// outside the supported range.
+func resolveStatusFilter(filter []Status) ([]Status, error) {
+	if len(filter) == 0 {
+		return []Status{StatusNotSet, StatusValid, StatusValidWithRemarks}, nil
+	}
+	for _, s := range filter {
+		if s < StatusRemoved || s > StatusInvalid {
+			return nil, fmt.Errorf("unsupported status %d; supported range is %d..%d", s, StatusRemoved, StatusInvalid)
+		}
+	}
+	return filter, nil
 }
 
 // newTimeseriesData builds the single-series response. When the interval is

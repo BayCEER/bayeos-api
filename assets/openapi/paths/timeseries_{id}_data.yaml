@@ -92,6 +92,22 @@ get:
         enum: [iso, epoch]
         default: iso
       description: Timestamp encoding of the response; `iso` (default) uses RFC3339 strings, `epoch` uses epoch microseconds
+    - name: status_filter
+      in: query
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: array
+        items:
+          $ref: ../schema/TimeseriesStatus.yaml
+        default: [0, 1, 2]
+      description: >
+        Only return data points whose status matches one of the given values
+        (comma-separated, e.g. `status_filter=0,1,2`). Defaults to `0,1,2`
+        (not set, valid, valid with remarks). Applies only to raw queries;
+        when `sample_interval` is set it is ignored because the rollup views
+        always contain statuses 0, 1 and 2.
   responses:
     "200":
       description: ok

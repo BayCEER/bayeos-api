@@ -98,6 +98,11 @@ type TimeseriesQuery struct {
 	// TsType selects the timestamp encoding of the response: "iso" (default,
 	// RFC3339 strings) or "epoch" (epoch microseconds). Empty means iso.
 	TsType string `form:"ts_type"`
+	// StatusFilter restricts raw queries to the given data point statuses. It is
+	// populated by the handler from the comma-separated "status_filter" query
+	// parameter and only applies to raw (non-rollup) queries; an empty filter
+	// means the default [StatusNotSet, StatusValid, StatusValidWithRemarks].
+	StatusFilter []Status `form:"-"`
 }
 
 // TimeseriesDataQuery are the query parameters of GET <context>/timeseries/data.
@@ -121,6 +126,11 @@ type TimeseriesDataQuery struct {
 	// TsType selects the timestamp encoding of the response: "iso" (default,
 	// RFC3339 strings) or "epoch" (epoch microseconds). Empty means iso.
 	TsType string `form:"ts_type"`
+	// StatusFilter restricts raw queries to the given data point statuses. It is
+	// populated by the handler from the comma-separated "status_filter" query
+	// parameter and only applies to raw (non-rollup) queries; an empty filter
+	// means the default [StatusNotSet, StatusValid, StatusValidWithRemarks].
+	StatusFilter []Status `form:"-"`
 }
 
 // TimeseriesStatsQuery are the query parameters of GET <context>/timeseries/{id}/stats.

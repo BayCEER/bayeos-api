@@ -15,14 +15,16 @@ import (
 // fakeQuestRepo is an in-memory QuestRepo used for unit tests without a live
 // QuestDB.
 type fakeQuestRepo struct {
-	data              map[int32][]DataPoint
-	status            map[int32][]StatusPoint
-	gaps              map[int32][]GapInfo
-	lastInterval      string
-	lastSampleFunc    string
-	lastBatchSampleFn string
-	lastGapThreshold  int
-	lastGapLimit      int
+	data                  map[int32][]DataPoint
+	status                map[int32][]StatusPoint
+	gaps                  map[int32][]GapInfo
+	lastInterval          string
+	lastSampleFunc        string
+	lastBatchSampleFn     string
+	lastGapThreshold      int
+	lastGapLimit          int
+	lastStatusFilter      []Status
+	lastBatchStatusFilter []Status
 }
 
 func newFakeQuestRepo() *fakeQuestRepo {
@@ -57,15 +59,17 @@ func (f *fakeQuestRepo) UpsertStatusBatch(ctx context.Context, nodeID int32, pts
 	return nil
 }
 
-func (f *fakeQuestRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int) ([]DataPoint, error) {
+func (f *fakeQuestRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []Status) ([]DataPoint, error) {
 	f.lastInterval = interval
 	f.lastSampleFunc = sampleFunc
+	f.lastStatusFilter = statusFilter
 	return f.data[nodeID], nil
 }
 
-func (f *fakeQuestRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, limit *int) ([]SeriesData, error) {
+func (f *fakeQuestRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []Status) ([]SeriesData, error) {
 	f.lastInterval = interval
 	f.lastBatchSampleFn = sampleFunc
+	f.lastBatchStatusFilter = statusFilter
 	var out []SeriesData
 	for _, id := range ids {
 		s := SeriesData{ID: id}
@@ -139,7 +143,7 @@ func TestFakeQuestRepoRoundTrip(t *testing.T) {
 	pts := []DataPoint{{Ts: ts, Value: 1.5}}
 
 	require.NoError(t, r.Insert(context.Background(), 42, pts))
-	got, err := r.Query(context.Background(), 42, nil, nil, "", "", nil)
+	got, err := r.Query(context.Background(), 42, nil, nil, "", "", nil, nil)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, pts[0], got[0])
@@ -409,6 +413,82 @@ func TestQueryDataBatchSkipsNonTimeseries(t *testing.T) {
 	data, err := svc.QueryDataBatch(context.Background(), TimeseriesDataQuery{IDs: []int32{1}}, 1)
 	require.NoError(t, err)
 	require.Empty(t, data.Series)
+}
+
+func TestQueryDataDefaultStatusFilter(t *testing.T) {
+	r := newFakeQuestRepo()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	r.data[1] = []DataPoint{{Ts: base, Value: 1}}
+
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	data, err := svc.QueryData(context.Background(), 1, TimeseriesQuery{}, 1)
+	require.NoError(t, err)
+	require.Len(t, data.Series, 1)
+	require.Equal(t, []Status{StatusNotSet, StatusValid, StatusValidWithRemarks}, r.lastStatusFilter)
+}
+
+func TestQueryDataCustomStatusFilter(t *testing.T) {
+	r := newFakeQuestRepo()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	r.data[1] = []DataPoint{{Ts: base, Value: 1}}
+
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	data, err := svc.QueryData(context.Background(), 1, TimeseriesQuery{StatusFilter: []Status{StatusOverrange, StatusValid}}, 1)
+	require.NoError(t, err)
+	require.Len(t, data.Series, 1)
+	require.Equal(t, []Status{StatusOverrange, StatusValid}, r.lastStatusFilter)
+}
+
+func TestQueryDataInvalidStatusFilter(t *testing.T) {
+	r := newFakeQuestRepo()
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	_, err := svc.QueryData(context.Background(), 1, TimeseriesQuery{StatusFilter: []Status{StatusInvalid + 1}}, 1)
+	require.Error(t, err)
+	require.Nil(t, r.lastStatusFilter)
+}
+
+func TestQueryDataBatchDefaultStatusFilter(t *testing.T) {
+	r := newFakeQuestRepo()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	r.data[1] = []DataPoint{{Ts: base, Value: 1}}
+
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	data, err := svc.QueryDataBatch(context.Background(), TimeseriesDataQuery{IDs: []int32{1}}, 1)
+	require.NoError(t, err)
+	require.Len(t, data.Series, 1)
+	require.Equal(t, []Status{StatusNotSet, StatusValid, StatusValidWithRemarks}, r.lastBatchStatusFilter)
+}
+
+func TestQueryDataBatchCustomStatusFilter(t *testing.T) {
+	r := newFakeQuestRepo()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	r.data[1] = []DataPoint{{Ts: base, Value: 1}}
+
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	data, err := svc.QueryDataBatch(context.Background(), TimeseriesDataQuery{IDs: []int32{1}, StatusFilter: []Status{StatusRemoved}}, 1)
+	require.NoError(t, err)
+	require.Len(t, data.Series, 1)
+	require.Equal(t, []Status{StatusRemoved}, r.lastBatchStatusFilter)
+}
+
+func TestQueryDataBatchInvalidStatusFilter(t *testing.T) {
+	r := newFakeQuestRepo()
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+
+	_, err := svc.QueryDataBatch(context.Background(), TimeseriesDataQuery{IDs: []int32{1}, StatusFilter: []Status{-2}}, 1)
+	require.Error(t, err)
+	require.Nil(t, r.lastBatchStatusFilter)
 }
 
 func TestQueryDataIsoDefault(t *testing.T) {
