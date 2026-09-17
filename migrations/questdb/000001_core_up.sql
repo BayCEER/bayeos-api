@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS series (
   id SYMBOL CAPACITY 16384 CACHE INDEX,
   ts TIMESTAMP,
   value DOUBLE,
-  status byte default 0,
+  status byte,
 ) TIMESTAMP(ts) PARTITION BY DAY WAL
 DEDUP UPSERT KEYS(id, ts);
 
