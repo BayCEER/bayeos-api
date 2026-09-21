@@ -21,6 +21,10 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	}
 	u, err := h.UserService.CreateUser(c.Request.Context(), cre)
 	if err != nil {
+		if errors.Is(err, service.ErrSignInNameTaken) {
+			mw.Abort(c, mw.New(http.StatusConflict, "Conflict", "A user with this sign in name already exists"))
+			return
+		}
 		mw.AbortWithInternalError(c, "Sign up failed.")
 		return
 	}
@@ -83,6 +87,10 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		}
 		if err := h.UserService.UpdateUser(c.Request.Context(), id, &fields); err != nil {
 			if mw.AbortWithBadRequestIfReadOnlyField(c, err) {
+				return
+			}
+			if errors.Is(err, service.ErrSignInNameTaken) {
+				mw.Abort(c, mw.New(http.StatusConflict, "Conflict", "A user with this sign in name already exists"))
 				return
 			}
 			mw.AbortWithInternalError(c, "Failed to update user")

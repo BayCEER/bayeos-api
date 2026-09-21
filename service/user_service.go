@@ -44,6 +44,7 @@ const MaxUserImageBytes = 5 << 20
 
 var ErrImageTooLarge = errors.New("image exceeds maximum allowed size")
 var ErrUnsupportedImageType = errors.New("unsupported image type, only PNG and JPEG are allowed")
+var ErrSignInNameTaken = errors.New("a user with this sign in name already exists")
 
 func NewUserService(sqlRepo repository.SqlRepo, ldapRepo ldap.LdapRepo) UserService {
 	return &userService{
@@ -83,6 +84,9 @@ func (s *userService) CreateUser(tx context.Context, cre model.SignUpCredentials
 		u = model.User{DisplayName: cre.DisplayName, EmailAddress: cre.EmailAddress, SignInName: cre.SignInName,
 			PasswordHash: hash, HomeNodeID: node.ID}
 		if err := repo.CreateUser(ctx, &u); err != nil {
+			if repository.IsUniqueViolation(err) {
+				return fmt.Errorf("sign in name %q already exists: %w", cre.SignInName, ErrSignInNameTaken)
+			}
 			return err
 		}
 
@@ -95,7 +99,7 @@ func (s *userService) CreateUser(tx context.Context, cre model.SignUpCredentials
 		return nil
 
 	}); err != nil {
-		return u, fmt.Errorf("failed to save user:%s", cre.DisplayName)
+		return u, fmt.Errorf("failed to save user:%s: %w", cre.DisplayName, err)
 	}
 	return u, nil
 }
@@ -145,6 +149,9 @@ func (s *userService) UpdateUser(ctx context.Context, id int32, fields *map[stri
 	if err := s.sqlRepo.Do(ctx, func(repo repository.SqlRepo) error {
 		for k, v := range *fields {
 			if err := s.sqlRepo.UpdateUserFieldByID(ctx, id, k, v); err != nil {
+				if repository.IsUniqueViolation(err) {
+					return fmt.Errorf("update user %d: %w", id, ErrSignInNameTaken)
+				}
 				return err
 			}
 		}
