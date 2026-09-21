@@ -114,7 +114,7 @@ func TestUpdateNodeToken(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 
 	// Read-only field is rejected with bad request
-	var readOnlyPatch = []byte(fmt.Sprintf(`{"id": %d}`, nt.ID))
+	var readOnlyPatch = fmt.Appendf(nil, `{"id": %d}`, nt.ID)
 	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/bayeos-api/nodes/%d/tokens/%d", user.HomeNodeID, nt.ID), bytes.NewBuffer(readOnlyPatch), jt)
 	require.NoError(t, err)
 	w = httptest.NewRecorder()

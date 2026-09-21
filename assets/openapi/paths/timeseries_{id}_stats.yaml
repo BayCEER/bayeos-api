@@ -10,14 +10,10 @@ get:
     - Timeseries
   summary: Compute statistical metadata of a timeseries
   description: >
-    Computes statistics over the timeseries samples: count, first/last
-    timestamp, minimum, maximum, mean and standard deviation. When the node's
-    metadata contains a `resolution` value in seconds, the response additionally
-    includes completeness information (expected and missing sample counts
-    derived from that resolution).
-
-    Gap detection is not part of this endpoint; use
-    `GET /timeseries/{id}/gaps` instead.
+    Computes statistics (count, range, mean, stddev).
+    When the node's metadata contains a `resolution` value in seconds, the
+    response additionally includes completeness information derived from the
+    expected sampling period.
   security:
     - JWTAuth: []
   parameters:

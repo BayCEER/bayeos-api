@@ -4,25 +4,27 @@ properties:
     type: integer
     description: Number of data points used
   first_ts:
-    type: [string, "null"]
+    type: string
     format: date-time
   last_ts:
-    type: [string, "null"]
+    type: string
     format: date-time
   min:
-    type: [number, "null"]
+    type: number
     format: double
   max:
-    type: [number, "null"]
+    type: number
     format: double
   mean:
-    type: [number, "null"]
+    type: number
     format: double
   stddev:
-    type: [number, "null"]
+    type: number
     format: double
+    nullable: true
   completeness:
-    type: [object, "null"]
+    type: object
+    nullable: true
     description: Present only when the node metadata has a resolution value
     properties:
       expected_count:
