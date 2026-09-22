@@ -120,9 +120,6 @@ type TimeseriesDataQuery struct {
 	// "min", "max" or "first". Defaults to "avg". Ignored when SampleInterval
 	// is empty.
 	SampleFunc string `form:"sample_func"`
-	// Limit caps the number of points returned per series; the most recent
-	// points are returned. Optional.
-	Limit *int `form:"limit"`
 	// TsType selects the timestamp encoding of the response: "iso" (default,
 	// RFC3339 strings) or "epoch" (epoch microseconds). Empty means iso.
 	TsType string `form:"ts_type"`

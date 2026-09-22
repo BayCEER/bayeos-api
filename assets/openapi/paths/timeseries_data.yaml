@@ -126,14 +126,6 @@ get:
         enum: [avg, count, sum, last, min, max, first]
         default: avg
       description: Aggregate applied within each bucket; ignored when `sample_interval` is empty
-    - name: limit
-      in: query
-      required: false
-      schema:
-        type: integer
-        format: int32
-        minimum: 1
-      description: Maximum number of data points to return per series; the most recent points are returned
     - name: ts_type
       in: query
       required: false

@@ -23,7 +23,7 @@ type QuestRepo interface {
 	InsertBatch(ctx context.Context, series []SeriesData) error
 	UpsertStatusBatch(ctx context.Context, nodeID int32, pts []StatusPoint) error
 	Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []Status) ([]DataPoint, error)
-	QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []Status) ([]SeriesData, error)
+	QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, statusFilter []Status) ([]SeriesData, error)
 
 	ComputeStats(ctx context.Context, nodeID int32, from, to *time.Time, agg string) (*TimeseriesStats, error)
 	ComputeCompleteness(ctx context.Context, nodeID int32, resolutionSec int, from, to *time.Time) (*CompletenessStats, error)
@@ -142,7 +142,7 @@ func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time
 	ctx, span := r.span(ctx, "timeseries.query")
 	defer span.End()
 
-	timeCol, valueCol, statusCol, table := "ts", "value", "cast(status as int) AS status", rawTable
+	timeCol, valueCol, statusCol, table := "ts", "value", "cast(status as int) AS st", rawTable
 	switch interval {
 	case "":
 		// raw series table
@@ -161,7 +161,7 @@ func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time
 	}
 
 	query := fmt.Sprintf("SELECT %s, %s%s FROM %s WHERE id = $1", timeCol, valueCol, statusExpr, table)
-	args := []interface{}{fmt.Sprintf("%d", nodeID)}
+	args := []any{fmt.Sprintf("%d", nodeID)}
 	if from != nil {
 		args = append(args, *from)
 		query += fmt.Sprintf(" AND %s >= $%d", timeCol, len(args))
@@ -184,8 +184,18 @@ func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time
 
 	// Return the most recent points when a limit is given, in ascending order.
 	if limit != nil && *limit > 0 {
-		query += fmt.Sprintf(" ORDER BY %s DESC LIMIT $%d", timeCol, len(args)+1)
 		args = append(args, *limit)
+		selectPart := fmt.Sprintf("%s AS t, %s AS v", timeCol, valueCol)
+		if statusCol != "" {
+			selectPart += ", " + statusCol
+		}
+		fromIdx := strings.Index(query, " FROM")
+		inner := "SELECT " + selectPart + query[fromIdx:] + fmt.Sprintf(" ORDER BY %s DESC LIMIT $%d", timeCol, len(args))
+		selectCols := "t, v"
+		if statusCol != "" {
+			selectCols += ", st"
+		}
+		query = fmt.Sprintf("SELECT %s FROM (%s) AS recent ORDER BY t ASC", selectCols, inner)
 	} else {
 		query += fmt.Sprintf(" ORDER BY %s", timeCol)
 	}
@@ -217,16 +227,10 @@ func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-
-	if limit != nil && *limit > 0 {
-		for i, j := 0, len(pts)-1; i < j; i, j = i+1, j-1 {
-			pts[i], pts[j] = pts[j], pts[i]
-		}
-	}
 	return pts, nil
 }
 
-func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []Status) ([]SeriesData, error) {
+func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, statusFilter []Status) ([]SeriesData, error) {
 	ctx, span := r.span(ctx, "timeseries.query_batch")
 	defer span.End()
 
@@ -277,27 +281,11 @@ func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.
 	}
 
 	statusExpr := ""
-	outerSelect := "t, v"
 	if statusCol != "" {
 		statusExpr = ", " + statusCol
-		outerSelect = "t, v, st"
 	}
 
-	// The per-series limit keeps the most recent N points per series, mirroring
-	// the single-series behaviour: select the newest rows first, then reorder
-	// ascending.
-	query := ""
-	if limit != nil && *limit > 0 {
-		args = append(args, *limit)
-		query = fmt.Sprintf(`WITH ranked AS (
-			SELECT id, %[1]s AS t, %[2]s AS v%[3]s,
-				row_number() OVER (PARTITION BY id ORDER BY %[1]s DESC) AS rn
-			FROM %[4]s %[5]s
-		)
-		SELECT CAST(id AS INT) AS id, %[6]s FROM ranked WHERE rn <= $%[7]d ORDER BY id, t`, timeCol, valueCol, statusExpr, table, where, outerSelect, len(args))
-	} else {
-		query = fmt.Sprintf("SELECT CAST(id AS INT) AS id, %[1]s AS t, %[2]s AS v%[3]s FROM %[4]s %[5]s ORDER BY id, %[1]s", timeCol, valueCol, statusExpr, table, where)
-	}
+	query := fmt.Sprintf("SELECT CAST(id AS INT) AS id, %[1]s AS t, %[2]s AS v%[3]s FROM %[4]s %[5]s ORDER BY id, %[1]s", timeCol, valueCol, statusExpr, table, where)
 
 	rows, err := r.conn.Query(ctx, query, args...)
 	if err != nil {

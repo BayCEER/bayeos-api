@@ -293,7 +293,7 @@ func (s *timeseriesService) QueryDataBatch(ctx context.Context, q TimeseriesData
 		}
 	}
 
-	series, err := s.queries.QueryBatch(ctx, readable, q.From, q.To, q.SampleInterval, sampleFunc, q.Limit, statusFilter)
+	series, err := s.queries.QueryBatch(ctx, readable, q.From, q.To, q.SampleInterval, sampleFunc, statusFilter)
 	if err != nil {
 		return nil, err
 	}

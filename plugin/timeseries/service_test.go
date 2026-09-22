@@ -66,7 +66,7 @@ func (f *fakeQuestRepo) Query(ctx context.Context, nodeID int32, from, to *time.
 	return f.data[nodeID], nil
 }
 
-func (f *fakeQuestRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []Status) ([]SeriesData, error) {
+func (f *fakeQuestRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, statusFilter []Status) ([]SeriesData, error) {
 	f.lastInterval = interval
 	f.lastBatchSampleFn = sampleFunc
 	f.lastBatchStatusFilter = statusFilter
