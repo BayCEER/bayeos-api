@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 
 	mw "github.com/BayCEER/bayeos/bayeos-api/middleware"
 	"github.com/BayCEER/bayeos/bayeos-api/model"
@@ -53,11 +54,32 @@ func (h *Handler) GetUsers(c *gin.Context) {
 		return
 	}
 
-	if users, err := h.UserService.GetUsers(c.Request.Context(), ids); err != nil {
-		mw.AbortWithInternalError(c, "Failed to get users")
+	if len(ids) != 0 {
+		if users, err := h.UserService.GetUsers(c.Request.Context(), ids); err != nil {
+			mw.AbortWithInternalError(c, "Failed to get users")
+			return
+		} else {
+			c.JSON(http.StatusOK, model.Page[model.User]{Total: len(users), Hits: users})
+		}
 		return
+	}
+
+	pattern := c.DefaultQuery("pattern", "")
+	skip, err := strconv.Atoi(c.DefaultQuery("skip", "0"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid skip parameter")
+		return
+	}
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "0"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid limit parameter")
+		return
+	}
+
+	if users, total, err := h.UserService.GetUsersPage(c.Request.Context(), pattern, skip, limit); err != nil {
+		mw.AbortWithInternalError(c, "Failed to get users")
 	} else {
-		c.JSON(http.StatusOK, users)
+		c.JSON(http.StatusOK, model.Page[model.User]{Total: total, Hits: users})
 	}
 }
 
@@ -79,12 +101,23 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 			return
 		}
 
-		// Set field values
+		// memberids maps onto the user_group_member join table, not a users
+		// column
+		var body struct {
+			MemberIDs []int32 `json:"memberids"`
+		}
+		if err := json.Unmarshal(jsonData, &body); err != nil {
+			mw.AbortWithBadRequestError(c, "Invalid request body")
+			return
+		}
+
+		// Set field values (membership is handled separately below)
 		var fields map[string]interface{}
 		if err := json.Unmarshal(jsonData, &fields); err != nil {
 			mw.AbortWithBadRequestError(c, "Invalid request body")
 			return
 		}
+		delete(fields, "memberids")
 		if err := h.UserService.UpdateUser(c.Request.Context(), id, &fields); err != nil {
 			if mw.AbortWithBadRequestIfReadOnlyField(c, err) {
 				return
@@ -96,6 +129,23 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 			mw.AbortWithInternalError(c, "Failed to update user")
 			return
 		}
+
+		// Changing group membership is a super-user action; a user must not be
+		// able to add themselves to groups via self-service patching.
+		if body.MemberIDs != nil {
+			user, exists := mw.AuthUserFromContext(c)
+			if !exists || !user.SuperUser {
+				mw.AbortWithForbiddenError(c, "Missing privileges")
+				return
+			}
+			if err := h.UserGroupService.SetUserMemberships(c.Request.Context(), id, body.MemberIDs); err != nil {
+				mw.AbortWithInternalError(c, "Failed to update user group memberships")
+				return
+			}
+		}
+
+		// Passwords are never updated via this route; self-service changes go
+		// through PUT /auth/password.
 		c.JSON(http.StatusOK, gin.H{"message": "User updated"})
 	}
 }

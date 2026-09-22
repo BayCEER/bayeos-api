@@ -16,8 +16,11 @@ type User struct {
 }
 
 type UserAttributes struct {
-	DisplayName  string `db:"display_name" json:"display_name"`
-	SignInName   string `db:"sign_in_name" json:"sign_in_name"`
-	EmailAddress string `db:"email_address" json:"email_address"`
-	SuperUser    bool   `db:"super_user" json:"super_user"`
+	DisplayName  string  `db:"display_name" json:"display_name"`
+	SignInName   string  `db:"sign_in_name" json:"sign_in_name"`
+	EmailAddress string  `db:"email_address" json:"email_address"`
+	SuperUser    bool    `db:"super_user" json:"super_user"`
+	// MemberIDs is not a column on users; PATCH /users/:id maps it onto the
+	// user_group_member join table (super user only).
+	MemberIDs []int32 `json:"memberids,omitempty"`
 }

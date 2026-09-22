@@ -76,10 +76,11 @@ func TestUserGroupCRUD(t *testing.T) {
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	var groups []model.UserGroup
-	err = json.Unmarshal(w.Body.Bytes(), &groups)
+	var page model.Page[model.UserGroup]
+	err = json.Unmarshal(w.Body.Bytes(), &page)
 	require.NoError(t, err)
-	require.Contains(t, groups, got)
+	require.Equal(t, len(page.Hits), page.Total)
+	require.Contains(t, page.Hits, got)
 
 	// MEMBERS: create two users, add them to the group
 	u1Token, err := SignUp("ned", "secretpassword")

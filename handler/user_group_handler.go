@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 
 	mw "github.com/BayCEER/bayeos/bayeos-api/middleware"
 	"github.com/BayCEER/bayeos/bayeos-api/model"
@@ -19,11 +20,32 @@ func (h *Handler) GetUserGroups(c *gin.Context) {
 		return
 	}
 
-	if groups, err := h.UserGroupService.GetUserGroups(c.Request.Context(), ids); err != nil {
-		mw.AbortWithInternalError(c, "Failed to get user groups")
+	if len(ids) != 0 {
+		if groups, err := h.UserGroupService.GetUserGroups(c.Request.Context(), ids); err != nil {
+			mw.AbortWithInternalError(c, "Failed to get user groups")
+			return
+		} else {
+			c.JSON(http.StatusOK, model.Page[model.UserGroup]{Total: len(groups), Hits: groups})
+		}
 		return
+	}
+
+	pattern := c.DefaultQuery("pattern", "")
+	skip, err := strconv.Atoi(c.DefaultQuery("skip", "0"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid skip parameter")
+		return
+	}
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "0"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid limit parameter")
+		return
+	}
+
+	if groups, total, err := h.UserGroupService.GetUserGroupsPage(c.Request.Context(), pattern, skip, limit); err != nil {
+		mw.AbortWithInternalError(c, "Failed to get user groups")
 	} else {
-		c.JSON(http.StatusOK, groups)
+		c.JSON(http.StatusOK, model.Page[model.UserGroup]{Total: total, Hits: groups})
 	}
 }
 

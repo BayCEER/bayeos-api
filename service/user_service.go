@@ -20,6 +20,7 @@ type UserService interface {
 	GetUser(ctx context.Context, id int32) (model.User, error)
 	GetUsers(ctx context.Context, ids []int32) ([]model.User, error)
 	GetAllUsers(ctx context.Context) ([]model.User, error)
+	GetUsersPage(ctx context.Context, pattern string, skip, limit int) ([]model.User, int, error)
 
 	UpdateUser(ctx context.Context, id int32, fields *map[string]interface{}) error
 	DeleteUser(ctx context.Context, id int32) error
@@ -38,7 +39,7 @@ type userService struct {
 	ldapRepo ldap.LdapRepo
 }
 
-const MIN_PASSWORD_LENGTH = 5
+const MIN_PASSWORD_LENGTH = 6
 
 const MaxUserImageBytes = 5 << 20
 
@@ -116,6 +117,9 @@ func (s *userService) SetPassword(ctx context.Context, sc model.SignInCredential
 	ctx, span := withServiceSpan(ctx, "users.set_password")
 	defer func() { endServiceSpan(span, err) }()
 
+	if len(sc.Password) < MIN_PASSWORD_LENGTH {
+		return errors.New("password length too short")
+	}
 	if hash, err := s.encodeMD5(sc.Password); err != nil {
 		return fmt.Errorf("failed to encode MD5 password for user:%s", sc.Name)
 	} else {
@@ -139,6 +143,21 @@ func (s *userService) GetAllUsers(ctx context.Context) (users []model.User, err 
 	defer func() { endServiceSpan(span, err) }()
 
 	return s.sqlRepo.FindAllUsers(ctx)
+}
+
+func (s *userService) GetUsersPage(ctx context.Context, pattern string, skip, limit int) (users []model.User, total int, err error) {
+	ctx, span := withServiceSpan(ctx, "users.page")
+	defer func() { endServiceSpan(span, err) }()
+
+	users, err = s.sqlRepo.FindUsersPage(ctx, pattern, skip, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err = s.sqlRepo.CountUsers(ctx, pattern)
+	if err != nil {
+		return nil, 0, err
+	}
+	return users, total, nil
 }
 
 func (s *userService) UpdateUser(ctx context.Context, id int32, fields *map[string]interface{}) (err error) {

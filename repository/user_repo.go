@@ -68,6 +68,33 @@ func (r *SqlRepo) FindAllUsers(ctx context.Context) ([]model.User, error) {
 	return u, nil
 }
 
+func (r *SqlRepo) FindUsersPage(ctx context.Context, pattern string, skip, limit int) ([]model.User, error) {
+	u := []model.User{}
+	stmt := `SELECT id, display_name,sign_in_name,email_address,home_node_id,
+	password_hash,super_user,sys_user, created_at, last_sign_in_time from "users"
+	where ($1 = '' or display_name ILIKE '%' || $1 || '%')
+	order by display_name limit nullif($2,0) offset $3`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.SelectContext(c, &u, stmt, pattern, limit, skip)
+	endQuerySpan(span, err)
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+func (r *SqlRepo) CountUsers(ctx context.Context, pattern string) (int, error) {
+	var n int
+	stmt := `SELECT count(*) from "users" where ($1 = '' or display_name ILIKE '%' || $1 || '%')`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, &n, stmt, pattern)
+	endQuerySpan(span, err)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 func (r *SqlRepo) CreateUser(ctx context.Context, e *model.User) error {
 	stmt := `INSERT INTO "users" (display_name,sign_in_name,email_address,home_node_id 
 		,password_hash,super_user,sys_user) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,display_name,sign_in_name,email_address,home_node_id, password_hash,super_user,sys_user, created_at, last_sign_in_time`

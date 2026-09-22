@@ -11,6 +11,7 @@ import (
 type UserGroupService interface {
 	GetUserGroup(ctx context.Context, id int32) (model.UserGroup, error)
 	GetUserGroups(ctx context.Context, ids []int32) ([]model.UserGroup, error)
+	GetUserGroupsPage(ctx context.Context, pattern string, skip, limit int) ([]model.UserGroup, int, error)
 	CreateUserGroup(ctx context.Context, u *model.UserGroup) error
 	UpdateUserGroup(ctx context.Context, id int32, fields *map[string]interface{}) error
 	DeleteUserGroup(ctx context.Context, id int32) error
@@ -18,6 +19,7 @@ type UserGroupService interface {
 	GetUserGroupMembers(ctx context.Context, groupID int32) ([]model.User, error)
 	AddUserGroupMembers(ctx context.Context, groupID int32, userIDs []int32) error
 	RemoveUserGroupMember(ctx context.Context, groupID int32, userID int32) error
+	SetUserMemberships(ctx context.Context, userID int32, groupIDs []int32) error
 
 	GetUserGroupPrivileges(ctx context.Context, groupID int32) ([]model.NodePrivilege, error)
 }
@@ -67,6 +69,26 @@ func (s *userGroupService) GetUserGroups(ctx context.Context, ids []int32) (grou
 		}
 	}
 	return groups, nil
+}
+
+func (s *userGroupService) GetUserGroupsPage(ctx context.Context, pattern string, skip, limit int) (groups []model.UserGroup, total int, err error) {
+	ctx, span := withServiceSpan(ctx, "user_groups.page")
+	defer func() { endServiceSpan(span, err) }()
+
+	groups, err = s.sqlRepo.FindUserGroupsPage(ctx, pattern, skip, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get user groups: %w", err)
+	}
+	for i := range groups {
+		if err := s.fillMemberIDs(ctx, &groups[i]); err != nil {
+			return nil, 0, err
+		}
+	}
+	total, err = s.sqlRepo.CountUserGroups(ctx, pattern)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count user groups: %w", err)
+	}
+	return groups, total, nil
 }
 
 func (s *userGroupService) CreateUserGroup(ctx context.Context, ug *model.UserGroup) (err error) {
@@ -143,6 +165,43 @@ func (s *userGroupService) RemoveUserGroupMember(ctx context.Context, groupID in
 
 	if err := s.sqlRepo.DeleteUserGroupMember(ctx, groupID, userID); err != nil {
 		return fmt.Errorf("failed to remove member %d from user group %d: %w", userID, groupID, err)
+	}
+	return nil
+}
+
+func (s *userGroupService) SetUserMemberships(ctx context.Context, userID int32, groupIDs []int32) (err error) {
+	ctx, span := withServiceSpan(ctx, "user_groups.set_memberships")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, userID)
+
+	if err := s.sqlRepo.Do(ctx, func(repo repository.SqlRepo) error {
+		current, err := repo.FindUserGroupIDsByUserID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		currentSet := make(map[int32]bool, len(current))
+		for _, gid := range current {
+			currentSet[gid] = true
+		}
+		wanted := make(map[int32]bool, len(groupIDs))
+		for _, gid := range groupIDs {
+			wanted[gid] = true
+			if !currentSet[gid] {
+				if err := repo.CreateUserGroupMembers(ctx, gid, []int32{userID}); err != nil {
+					return err
+				}
+			}
+		}
+		for gid := range currentSet {
+			if !wanted[gid] {
+				if err := repo.DeleteUserGroupMember(ctx, gid, userID); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to set user %d memberships: %w", userID, err)
 	}
 	return nil
 }

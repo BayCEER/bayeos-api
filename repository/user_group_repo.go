@@ -43,6 +43,32 @@ func (r *SqlRepo) FindAllUserGroups(ctx context.Context) ([]model.UserGroup, err
 	return g, nil
 }
 
+func (r *SqlRepo) FindUserGroupsPage(ctx context.Context, pattern string, skip, limit int) ([]model.UserGroup, error) {
+	g := []model.UserGroup{}
+	stmt := `SELECT id, display_name, sys_group, created_at FROM user_group
+	where ($1 = '' or display_name ILIKE '%' || $1 || '%')
+	order by display_name limit nullif($2,0) offset $3`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.SelectContext(c, &g, stmt, pattern, limit, skip)
+	endQuerySpan(span, err)
+	if err != nil {
+		return nil, err
+	}
+	return g, nil
+}
+
+func (r *SqlRepo) CountUserGroups(ctx context.Context, pattern string) (int, error) {
+	var n int
+	stmt := `SELECT count(*) FROM user_group where ($1 = '' or display_name ILIKE '%' || $1 || '%')`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, &n, stmt, pattern)
+	endQuerySpan(span, err)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 func (r *SqlRepo) CreateUserGroup(ctx context.Context, g *model.UserGroup) error {
 	stmt := `INSERT INTO user_group (display_name, sys_group) VALUES ($1,$2) RETURNING id, display_name, sys_group, created_at`
 	c, span := withQuerySpan(ctx, stmt)
@@ -95,6 +121,18 @@ func (r *SqlRepo) FindMemberUsersByGroupID(ctx context.Context, groupID int32) (
 		return nil, err
 	}
 	return u, nil
+}
+
+func (r *SqlRepo) FindUserGroupIDsByUserID(ctx context.Context, userID int32) ([]int32, error) {
+	ids := []int32{}
+	stmt := `SELECT group_id FROM user_group_member WHERE user_id=$1 ORDER BY group_id`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.SelectContext(c, &ids, stmt, userID)
+	endQuerySpan(span, err)
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 func (r *SqlRepo) CreateUserGroupMembers(ctx context.Context, groupID int32, userIDs []int32) error {

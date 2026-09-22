@@ -25,10 +25,12 @@ func TestUserCRUD(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	var users []model.User
-	err = json.Unmarshal(w.Body.Bytes(), &users)
+	var page model.Page[model.User]
+	err = json.Unmarshal(w.Body.Bytes(), &page)
 	require.NoError(t, err)
+	require.Equal(t, len(page.Hits), page.Total)
 
+	users := page.Hits
 	userCount := len(users)
 
 	// SignUp New User
@@ -58,8 +60,9 @@ func TestUserCRUD(t *testing.T) {
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	err = json.Unmarshal(w.Body.Bytes(), &users)
+	err = json.Unmarshal(w.Body.Bytes(), &page)
 	require.NoError(t, err)
+	users = page.Hits
 	require.Equal(t, userCount+1, len(users))
 
 	var id int32
