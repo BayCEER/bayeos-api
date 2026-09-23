@@ -182,22 +182,10 @@ func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time
 		query += " AND status IN (" + strings.Join(phs, ", ") + ")"
 	}
 
-	// Return the most recent points when a limit is given, in ascending order.
+	// Return the most recent points when a limit is given
 	if limit != nil && *limit > 0 {
-		args = append(args, *limit)
-		selectPart := fmt.Sprintf("%s AS t, %s AS v", timeCol, valueCol)
-		if statusCol != "" {
-			selectPart += ", " + statusCol
-		}
-		fromIdx := strings.Index(query, " FROM")
-		inner := "SELECT " + selectPart + query[fromIdx:] + fmt.Sprintf(" ORDER BY %s DESC LIMIT $%d", timeCol, len(args))
-		selectCols := "t, v"
-		if statusCol != "" {
-			selectCols += ", st"
-		}
-		query = fmt.Sprintf("SELECT %s FROM (%s) AS recent ORDER BY t ASC", selectCols, inner)
-	} else {
-		query += fmt.Sprintf(" ORDER BY %s", timeCol)
+		args = append(args, *limit*-1)
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
 	}
 
 	rows, err := r.conn.Query(ctx, query, args...)
