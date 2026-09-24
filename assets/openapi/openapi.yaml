@@ -69,6 +69,11 @@ paths:
   /usergroups/{id}/privileges:
     $ref: paths/usergroups_{id}_privileges.yaml
 
+  /charts:
+    $ref: paths/charts.yaml
+  /charts/{id}:
+    $ref: paths/charts_{id}.yaml
+
   /nodes:
     $ref: paths/nodes.yaml
   /nodes/search:

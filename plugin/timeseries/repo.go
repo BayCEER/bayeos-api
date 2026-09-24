@@ -28,6 +28,7 @@ type QuestRepo interface {
 	ComputeStats(ctx context.Context, nodeID int32, from, to *time.Time, agg string) (*TimeseriesStats, error)
 	ComputeCompleteness(ctx context.Context, nodeID int32, resolutionSec int, from, to *time.Time) (*CompletenessStats, error)
 	DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time, limit int) ([]GapInfo, error)
+	ComputeTimeRange(ctx context.Context, ids []int32) ([]SeriesTimeRange, error)
 }
 
 // questRepo persists observations in the QuestDB series table. The series id is
@@ -466,6 +467,73 @@ func (r *questRepo) DetectGaps(ctx context.Context, nodeID int32, thresholdMinut
 		return nil, err
 	}
 	return gaps, nil
+}
+
+// ComputeTimeRange returns the first and last timestamp of each series in the
+// given ids list, preserving the request order. Series without data are omitted
+// from the result.
+func (r *questRepo) ComputeTimeRange(ctx context.Context, ids []int32) ([]SeriesTimeRange, error) {
+	ctx, span := r.span(ctx, "timeseries.timerange")
+	defer span.End()
+
+	if len(ids) == 0 {
+		return []SeriesTimeRange{}, nil
+	}
+
+	placeholders := make([]string, 0, len(ids))
+	idArgs := make([]any, 0, len(ids))
+	for _, id := range ids {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", len(idArgs)+1))
+		idArgs = append(idArgs, fmt.Sprintf("%d", id))
+	}
+	in := "(" + strings.Join(placeholders, ", ") + ")"
+
+	// Collect the timestamp bounds per series.
+	bounds := make(map[int32]SeriesTimeRange, len(ids))
+	for _, tsCol := range []string{"first", "last"} {
+		rows, err := r.conn.Query(ctx, fmt.Sprintf(
+			"SELECT CAST(id AS INT) AS id, %s(ts) AS ts_bound FROM series WHERE id IN %s GROUP BY id", tsCol, in,
+		), idArgs...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id int32
+			var ts time.Time
+			if err := rows.Scan(&id, &ts); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			e, ok := bounds[id]
+			if !ok {
+				e = SeriesTimeRange{ID: id}
+			}
+			if tsCol == "first" {
+				e.First = ts
+			} else {
+				e.Last = ts
+			}
+			bounds[id] = e
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+
+	// Preserve the requested id order; skip ids without any data.
+	out := make([]SeriesTimeRange, 0, len(ids))
+	seen := make(map[int32]bool, len(ids))
+	for _, id := range ids {
+		e, ok := bounds[id]
+		if !ok || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, e)
+	}
+	return out, nil
 }
 
 // span starts a span on the repo's tracer (if set) and returns the context and

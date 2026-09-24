@@ -23,6 +23,7 @@ type fakeQuestRepo struct {
 	lastBatchSampleFn     string
 	lastGapThreshold      int
 	lastGapLimit          int
+	lastTimeRangeIDs      []int32
 	lastStatusFilter      []Status
 	lastBatchStatusFilter []Status
 }
@@ -135,6 +136,21 @@ func (f *fakeQuestRepo) DetectGaps(ctx context.Context, nodeID int32, thresholdM
 	f.lastGapThreshold = thresholdMinutes
 	f.lastGapLimit = limit
 	return f.gaps[nodeID], nil
+}
+
+func (f *fakeQuestRepo) ComputeTimeRange(ctx context.Context, ids []int32) ([]SeriesTimeRange, error) {
+	f.lastTimeRangeIDs = ids
+	out := make([]SeriesTimeRange, 0, len(ids))
+	seen := make(map[int32]bool, len(ids))
+	for _, id := range ids {
+		pts := f.data[id]
+		if len(pts) == 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, SeriesTimeRange{ID: id, First: pts[0].Ts, Last: pts[len(pts)-1].Ts})
+	}
+	return out, nil
 }
 
 func TestFakeQuestRepoRoundTrip(t *testing.T) {
@@ -315,6 +331,29 @@ func TestGetGapsNoResolution(t *testing.T) {
 	gaps, err := svc.GetGaps(context.Background(), 8, TimeseriesGapsQuery{}, 1)
 	require.ErrorIs(t, err, ErrNoResolution)
 	require.Nil(t, gaps)
+}
+
+func TestGetTimeRange(t *testing.T) {
+	r := newFakeQuestRepo()
+	first := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	r.data[1] = []DataPoint{{Ts: first, Value: 1}, {Ts: first.Add(2 * time.Hour), Value: 2}}
+	r.data[2] = []DataPoint{{Ts: first.Add(time.Hour), Value: 10}}
+
+	nodes := &stubNodeService{node: model.Node{ID: 1, DisplayName: "a", Kind: Kind, ParentID: 1}}
+
+	svc := NewTimeseriesService(nodes, &stubNodePrivService{}, r)
+	ranges, err := svc.GetTimeRange(context.Background(), []int32{2, 1, 99}, 1)
+	require.NoError(t, err)
+	// The stub node service treats every id as readable, so all three ids reach
+	// the repo; id 99 has no data and is omitted from the result.
+	require.Equal(t, []int32{2, 1, 99}, r.lastTimeRangeIDs)
+	require.Len(t, ranges, 2)
+	require.Equal(t, int32(2), ranges[0].ID)
+	require.Equal(t, first.Add(time.Hour), ranges[0].First)
+	require.Equal(t, first.Add(time.Hour), ranges[0].Last)
+	require.Equal(t, int32(1), ranges[1].ID)
+	require.Equal(t, first, ranges[1].First)
+	require.Equal(t, first.Add(2*time.Hour), ranges[1].Last)
 }
 
 func TestQueryDataBatch(t *testing.T) {

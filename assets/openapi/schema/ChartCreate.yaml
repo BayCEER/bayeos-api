@@ -1,0 +1,16 @@
+type: object
+description: "Payload for POST /charts. Series positions are derived from the array order."
+required:
+  - display_name
+properties:
+  display_name:
+    type: string
+  series:
+    type: array
+    items:
+      $ref: ./ChartSeries.yaml
+example:
+  display_name: "Temperature 2026"
+  series:
+    - node_id: 5
+    - node_id: 9

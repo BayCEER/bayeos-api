@@ -1,0 +1,64 @@
+get:
+  tags:
+    - Charts
+  summary: Get the charts of the authenticated user
+  description: Charts are scoped to the authenticated user; only the caller's own charts are returned.
+  security:
+    - JWTAuth: []
+  parameters:
+    - name: pattern
+      in: query
+      schema:
+        type: string
+      description: Filter by display name (case-insensitive substring)
+    - name: skip
+      in: query
+      schema:
+        type: integer
+        default: 0
+    - name: limit
+      in: query
+      schema:
+        type: integer
+        default: 0
+      description: "Maximum number of entries, 0 for no limit"
+  responses:
+    "200":
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              total:
+                type: integer
+              hits:
+                type: array
+                items:
+                  $ref: ../schema/Chart.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+post:
+  tags:
+    - Charts
+  summary: Create a chart for the authenticated user
+  security:
+    - JWTAuth: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/ChartCreate.yaml
+  responses:
+    "201":
+      description: Created
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/Chart.yaml
+    "409":
+      description: A chart with this display name already exists
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

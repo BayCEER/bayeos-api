@@ -293,6 +293,29 @@ func (h *Handlers) GetGaps(c *gin.Context) {
 	c.JSON(http.StatusOK, gaps)
 }
 
+func (h *Handlers) GetTimeRange(c *gin.Context) {
+	userID, ok := mw.AuthUserIDFromContext(c)
+	if !ok {
+		mw.AbortWithInternalError(c, "user id not found")
+		return
+	}
+	ids, err := strings.ParseCSVToInt32(c.Query("ids"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid ids parameter")
+		return
+	}
+	if len(ids) == 0 {
+		mw.AbortWithBadRequestError(c, "at least one ids value is required")
+		return
+	}
+	ranges, err := h.service.GetTimeRange(c.Request.Context(), ids, userID)
+	if err != nil {
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to compute time range: %v", err))
+		return
+	}
+	c.JSON(http.StatusOK, ranges)
+}
+
 // queryBoolDefault returns the boolean query parameter key, or def when the
 // parameter is empty or cannot be parsed as a bool.
 func queryBoolDefault(c *gin.Context, key string, def bool) bool {

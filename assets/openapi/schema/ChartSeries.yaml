@@ -1,0 +1,9 @@
+type: object
+required:
+  - node_id
+properties:
+  node_id:
+    type: integer
+    format: int32
+example:
+  node_id: 5

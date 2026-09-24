@@ -1,0 +1,51 @@
+type: object
+properties:
+  id:
+    readOnly: true
+    type: integer
+    format: int32
+  user_id:
+    readOnly: true
+    type: integer
+    format: int32
+  display_name:
+    type: string
+  created_at:
+    readOnly: true
+    type: string
+    format: date-time
+  series:
+    type: array
+    items:
+      type: object
+      properties:
+        id:
+          readOnly: true
+          type: integer
+          format: int32
+        user_chart_id:
+          readOnly: true
+          type: integer
+          format: int32
+        node_id:
+          type: integer
+          format: int32
+        position:
+          readOnly: true
+          type: integer
+          format: int32
+        created_at:
+          readOnly: true
+          type: string
+          format: date-time
+example:
+  id: 1
+  user_id: 3
+  display_name: "Temperature 2026"
+  created_at: "2026-09-23T12:00:00.000Z"
+  series:
+    - id: 10
+      user_chart_id: 1
+      node_id: 5
+      position: 0
+      created_at: "2026-09-23T12:00:00.000Z"

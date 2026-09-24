@@ -1,0 +1,58 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+    description: chart id
+
+get:
+  tags:
+    - Charts
+  summary: Get a chart of the authenticated user
+  description: Requests for charts owned by other users are answered with 404.
+  security:
+    - JWTAuth: []
+  responses:
+    "200":
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/Chart.yaml
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+patch:
+  tags:
+    - Charts
+  summary: Update a chart of the authenticated user
+  description: Partial update. Only the sent fields are changed; series, when present, replace the chart's series entirely.
+  security:
+    - JWTAuth: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: ../schema/ChartUpdate.yaml
+  responses:
+    "200":
+      description: updated
+    "409":
+      description: A chart with this display name already exists
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError
+
+delete:
+  tags:
+    - Charts
+  summary: Delete a chart of the authenticated user
+  security:
+    - JWTAuth: []
+  responses:
+    "200":
+      description: deleted
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

@@ -32,6 +32,7 @@ type TimeseriesService interface {
 	QueryDataBatch(ctx context.Context, q TimeseriesDataQuery, userID int32) (*TimeseriesBatchData, error)
 	GetStats(ctx context.Context, id int32, q TimeseriesStatsQuery, userID int32) (*TimeseriesStats, error)
 	GetGaps(ctx context.Context, id int32, q TimeseriesGapsQuery, userID int32) ([]GapInfo, error)
+	GetTimeRange(ctx context.Context, ids []int32, userID int32) ([]SeriesTimeRange, error)
 }
 
 type timeseriesService struct {
@@ -419,6 +420,23 @@ func (s *timeseriesService) GetGaps(ctx context.Context, id int32, q TimeseriesG
 		limit = *q.Limit
 	}
 	return s.queries.DetectGaps(ctx, id, threshold, q.From, q.To, limit)
+}
+
+// GetTimeRange returns the first and last timestamp of each readable series in
+// ids. Unknown, non-timeseries and non-readable ids are silently skipped rather
+// than failing the whole request, matching QueryDataBatch.
+func (s *timeseriesService) GetTimeRange(ctx context.Context, ids []int32, userID int32) (ranges []SeriesTimeRange, err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.timerange")
+	defer func() { endServiceSpan(span, err) }()
+	setUserID(span, userID)
+
+	readable := make([]int32, 0, len(ids))
+	for _, id := range ids {
+		if _, err := s.Get(ctx, id, userID); err == nil {
+			readable = append(readable, id)
+		}
+	}
+	return s.queries.ComputeTimeRange(ctx, readable)
 }
 
 // resolveGapThreshold returns the gap detection threshold in minutes. An

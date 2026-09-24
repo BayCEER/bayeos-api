@@ -6,6 +6,7 @@ import (
 	"github.com/BayCEER/bayeos/bayeos-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jmoiron/sqlx"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -24,6 +25,9 @@ type Host struct {
 	Router gin.IRoutes
 	// Quest is the concurrency-safe QuestDB connection pool shared by plugins.
 	Quest *pgxpool.Pool
+	// SqlDB is the shared PostgreSQL connection used by the core services.
+	// Plugins that persist to the relational store use it for data access.
+	SqlDB *sqlx.DB
 	// NodeService is shared for node CRUD and permission lookups.
 	NodeService service.NodeService
 	// NodePrivService is shared for granting node privileges.

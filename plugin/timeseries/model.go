@@ -378,3 +378,11 @@ type GapInfo struct {
 	End             time.Time `json:"end"`
 	DurationMinutes int       `json:"duration_minutes"`
 }
+
+// SeriesTimeRange is the response entry of GET <context>/timeseries/timerange.
+// First and Last are the first and last timestamps of the series.
+type SeriesTimeRange struct {
+	ID    int32     `json:"id"`
+	First time.Time `json:"first"`
+	Last  time.Time `json:"last"`
+}

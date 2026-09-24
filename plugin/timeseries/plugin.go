@@ -33,6 +33,7 @@ func (p *Plugin) Register(h *plugin.Host) error {
 	r.POST("/timeseries", middleware.ResolvePathOrIdFromBody("parent_id", "node_path", "NodeID"), chkPerm, hd.Create)
 	r.GET("/timeseries/data", hd.QueryDataBatch)
 	r.POST("/timeseries/data", hd.AddDataBatch)
+	r.GET("/timeseries/timerange", hd.GetTimeRange)
 	r.GET("/timeseries/:id", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.Get)
 	r.PATCH("/timeseries/:id", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.Update)
 	r.DELETE("/timeseries/:id", middleware.IdFromPath("id", "NodeID"), chkPerm, hd.Delete)

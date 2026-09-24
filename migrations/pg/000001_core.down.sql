@@ -1,6 +1,8 @@
 drop table if exists "node_privilege";
 drop table if exists "node_token";
 drop table if exists "user_images";
+drop table if exists "user_chart_series";
+drop table if exists "user_chart";  
 drop table if exists "user_group_member";
 drop table if exists "user_group";
 drop table if exists "users";

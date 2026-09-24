@@ -11,6 +11,7 @@ import (
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jmoiron/sqlx"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -39,6 +40,9 @@ type Config struct {
 	IDTokenService   service.IDTokenService
 	UserGroupService service.UserGroupService
 	Tracer           trace.Tracer
+
+	// SqlDB is the PostgreSQL connection handed to plugins via plugin.Host.
+	SqlDB *sqlx.DB
 
 	// Quest is the QuestDB connection pool handed to plugins.
 	Quest *pgxpool.Pool
@@ -144,6 +148,7 @@ func registerPlugins(h *Handler, c *Config, sec gin.IRoutes) {
 	host := &plugin.Host{
 		Router:          sec,
 		Quest:           c.Quest,
+		SqlDB:           c.SqlDB,
 		NodeService:     c.NodeService,
 		NodePrivService: c.NodePrivService,
 		Tracer:          c.Tracer,

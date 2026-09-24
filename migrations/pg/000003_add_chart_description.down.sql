@@ -1,0 +1,1 @@
+ALTER TABLE user_chart DROP COLUMN IF EXISTS description;

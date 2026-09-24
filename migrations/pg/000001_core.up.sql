@@ -55,6 +55,20 @@ CREATE TABLE user_images (
  mime_type TEXT NOT NULL DEFAULT 'image/jpeg'
 );
 
+CREATE TABLE user_chart (
+ id SERIAL PRIMARY KEY,
+ user_id INTEGER NOT NULL,
+ display_name TEXT NOT NULL,
+ created_at timestamp with time zone not null default now() 
+ );
+
+CREATE TABLE user_chart_series (
+    id SERIAL PRIMARY KEY,
+    user_chart_id INTEGER NOT NULL,
+    node_id INTEGER NOT NULL,
+    position INTEGER NOT NULL, 
+    created_at timestamp with time zone not null default now() 
+);
 
 
 create table node_privilege (
@@ -317,6 +331,27 @@ ALTER TABLE node_privilege ADD CONSTRAINT fk_node_privilege_group_fk
     FOREIGN KEY (grantee_group_id) REFERENCES user_group (id) MATCH SIMPLE
     ON UPDATE CASCADE
     ON DELETE CASCADE;
+
+ALTER TABLE user_chart_series ADD CONSTRAINT fk_user_chart_series_user_chart 
+    FOREIGN KEY (user_chart_id) REFERENCES user_chart(id) 
+    ON DELETE CASCADE 
+    ON UPDATE CASCADE;
+
+ALTER TABLE user_chart_series ADD CONSTRAINT fk_user_chart_series_series 
+    FOREIGN KEY (node_id) REFERENCES node(id) 
+    ON DELETE CASCADE 
+    ON UPDATE CASCADE;
+
+ALTER TABLE user_chart ADD CONSTRAINT fk_user_chart_users 
+    FOREIGN KEY (user_id) REFERENCES users(id) 
+    ON DELETE CASCADE 
+    ON UPDATE CASCADE;
+
+ALTER TABLE user_chart ADD CONSTRAINT uk_user_chart_user_id_display_name 
+UNIQUE (user_id, display_name);    
+
+ALTER TABLE user_chart_series ADD CONSTRAINT uk_user_chart_series_user_chart_id_position 
+UNIQUE (user_chart_id, position);    
 
 
 -- Root folder  

@@ -1,0 +1,1 @@
+ALTER TABLE user_chart ADD COLUMN description TEXT NOT NULL DEFAULT '';

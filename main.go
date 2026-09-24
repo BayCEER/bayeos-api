@@ -16,6 +16,7 @@ import (
 	"github.com/BayCEER/bayeos/bayeos-api/ldap"
 	log "github.com/BayCEER/bayeos/bayeos-api/logger"
 	"github.com/BayCEER/bayeos/bayeos-api/plugin"
+	_ "github.com/BayCEER/bayeos/bayeos-api/plugin/chart"
 	_ "github.com/BayCEER/bayeos/bayeos-api/plugin/timeseries"
 	"github.com/BayCEER/bayeos/bayeos-api/repository"
 	"github.com/BayCEER/bayeos/bayeos-api/service"
@@ -224,6 +225,7 @@ func main() {
 		NodeTokenService: nodeTokenService,
 		IDTokenService:   idTokenService,
 		UserGroupService: userGroupService,
+		SqlDB:            pg,
 		Tracer:           otel.Tracer(serviceName),
 		Quest:            questPool,
 		Plugins:          plugins(),

@@ -1,0 +1,13 @@
+type: object
+description: "Only the sent fields are changed; series, when present, replace the chart's series entirely."
+properties:
+  display_name:
+    type: string
+  series:
+    type: array
+    items:
+      $ref: ./ChartSeries.yaml
+example:
+  display_name: "Temperature 2027"
+  series:
+    - node_id: 5
