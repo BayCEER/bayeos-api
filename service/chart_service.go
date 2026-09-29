@@ -1,10 +1,11 @@
-package chart
+package service
 
 import (
 	"context"
 	"errors"
 	"fmt"
 
+	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/BayCEER/bayeos/bayeos-api/repository"
 )
 
@@ -13,23 +14,23 @@ var ErrChartNameTaken = errors.New("a chart with this name already exists")
 // ChartService exposes chart CRUD scoped to a single owner. Ownership is
 // enforced by scoping every data access to the user id.
 type ChartService interface {
-	GetChart(ctx context.Context, id int32, userID int32) (UserChart, error)
-	GetCharts(ctx context.Context, userID int32, pattern string, skip, limit int) ([]UserChart, int, error)
-	CreateChart(ctx context.Context, userID int32, cre UserChartCreate) (UserChart, error)
-	UpdateChart(ctx context.Context, id int32, userID int32, upd UserChartUpdate) error
+	GetChart(ctx context.Context, id int32, userID int32) (model.UserChart, error)
+	GetCharts(ctx context.Context, userID int32, pattern string, skip, limit int) ([]model.UserChart, int, error)
+	CreateChart(ctx context.Context, userID int32, cre model.UserChartCreate) (model.UserChart, error)
+	UpdateChart(ctx context.Context, id int32, userID int32, upd model.UserChartUpdate) error
 	DeleteChart(ctx context.Context, id int32, userID int32) error
 }
 
 type chartService struct {
-	repo ChartRepo
+	repo repository.SqlRepo
 }
 
 // NewChartService returns a ChartService backed by the given ChartRepo.
-func NewChartService(repo ChartRepo) ChartService {
+func NewChartService(repo repository.SqlRepo) ChartService {
 	return &chartService{repo: repo}
 }
 
-func (s *chartService) GetChart(ctx context.Context, id int32, userID int32) (c UserChart, err error) {
+func (s *chartService) GetChart(ctx context.Context, id int32, userID int32) (c model.UserChart, err error) {
 	ctx, span := withServiceSpan(ctx, "charts.get")
 	defer func() { endServiceSpan(span, err) }()
 	setUserID(span, userID)
@@ -42,7 +43,7 @@ func (s *chartService) GetChart(ctx context.Context, id int32, userID int32) (c 
 	return c, err
 }
 
-func (s *chartService) GetCharts(ctx context.Context, userID int32, pattern string, skip, limit int) (charts []UserChart, total int, err error) {
+func (s *chartService) GetCharts(ctx context.Context, userID int32, pattern string, skip, limit int) (charts []model.UserChart, total int, err error) {
 	ctx, span := withServiceSpan(ctx, "charts.page")
 	defer func() { endServiceSpan(span, err) }()
 	setUserID(span, userID)
@@ -63,13 +64,13 @@ func (s *chartService) GetCharts(ctx context.Context, userID int32, pattern stri
 	return charts, total, nil
 }
 
-func (s *chartService) CreateChart(ctx context.Context, userID int32, cre UserChartCreate) (c UserChart, err error) {
+func (s *chartService) CreateChart(ctx context.Context, userID int32, cre model.UserChartCreate) (c model.UserChart, err error) {
 	ctx, span := withServiceSpan(ctx, "charts.create")
 	defer func() { endServiceSpan(span, err) }()
 	setUserID(span, userID)
 
-	if err := s.repo.Do(ctx, func(repo ChartRepo) error {
-		c = UserChart{UserID: userID, DisplayName: cre.DisplayName, Description: cre.Description}
+	if err := s.repo.Do(ctx, func(repo repository.SqlRepo) error {
+		c = model.UserChart{UserID: userID, DisplayName: cre.DisplayName, Description: cre.Description}
 		if err := repo.CreateUserChart(ctx, &c); err != nil {
 			if repository.IsUniqueViolation(err) {
 				return fmt.Errorf("chart %q already exists: %w", cre.DisplayName, ErrChartNameTaken)
@@ -83,17 +84,17 @@ func (s *chartService) CreateChart(ctx context.Context, userID int32, cre UserCh
 		c.Series = series
 		return nil
 	}); err != nil {
-		return UserChart{}, err
+		return model.UserChart{}, err
 	}
 	return c, nil
 }
 
-func (s *chartService) UpdateChart(ctx context.Context, id int32, userID int32, upd UserChartUpdate) (err error) {
+func (s *chartService) UpdateChart(ctx context.Context, id int32, userID int32, upd model.UserChartUpdate) (err error) {
 	ctx, span := withServiceSpan(ctx, "charts.update")
 	defer func() { endServiceSpan(span, err) }()
 	setUserID(span, userID)
 
-	if err := s.repo.Do(ctx, func(repo ChartRepo) error {
+	if err := s.repo.Do(ctx, func(repo repository.SqlRepo) error {
 		if upd.DisplayName != nil {
 			if err := repo.UpdateUserChartFieldByID(ctx, id, userID, "display_name", *upd.DisplayName); err != nil {
 				if repository.IsUniqueViolation(err) {
@@ -132,10 +133,10 @@ func (s *chartService) DeleteChart(ctx context.Context, id int32, userID int32) 
 
 // insertChartSeries persists the given series with the position derived from
 // the slice order and returns the created rows.
-func insertChartSeries(ctx context.Context, repo ChartRepo, chartID int32, series []ChartSeriesCreate) ([]ChartSeries, error) {
-	created := make([]ChartSeries, 0, len(series))
+func insertChartSeries(ctx context.Context, repo repository.SqlRepo, chartID int32, series []model.ChartSeriesCreate) ([]model.ChartSeries, error) {
+	created := make([]model.ChartSeries, 0, len(series))
 	for i, s := range series {
-		cs := ChartSeries{UserChartID: chartID, NodeID: s.NodeID, Position: int32(i)}
+		cs := model.ChartSeries{UserChartID: chartID, NodeID: s.NodeID, Position: int32(i)}
 		if err := repo.CreateChartSeries(ctx, &cs); err != nil {
 			return nil, err
 		}

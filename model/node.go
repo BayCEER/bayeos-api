@@ -1,6 +1,8 @@
 package model
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 	"gopkg.in/guregu/null.v4"
 )
@@ -41,6 +43,18 @@ type NodeSearch struct {
 	Hits  []Node `json:"hits"`
 }
 
+type NodeTimeSpan struct {
+	ID        int32
+	ParentID  int32
+	ParentIdx int32 // Direct index in the array for O(1) access without map lookup
+
+	LocalFirst time.Time
+	LocalLast  time.Time
+
+	AggFirst time.Time
+	AggLast  time.Time
+}
+
 func NewNodePrivilege(nodeID int32, grantorID int32, granteeID int32) NodePrivilege {
 	return NodePrivilege{NodeID: nodeID, GrantorID: grantorID, GranteeID: null.IntFrom(int64(granteeID)), Permission: FULL_PERMISSION}
 }
@@ -48,4 +62,22 @@ func NewNodePrivilege(nodeID int32, grantorID int32, granteeID int32) NodePrivil
 func NewNodeToken(nodeID int32) NodeToken {
 	uu, _ := uuid.NewRandom()
 	return NodeToken{NodeID: nodeID, Token: uu}
+}
+
+type NodeMetaDecorator func(node *Node)
+
+func FirstLastDecorator(first, last time.Time) NodeMetaDecorator {
+	return func(node *Node) {
+		if node == nil {
+			return
+		}
+		md := node.Metadata.Map()
+		md["first"] = first
+		md["last"] = last
+		merged, err := MetadataFromMap(md)
+		if err != nil {
+			return
+		}
+		node.Metadata = merged
+	}
 }

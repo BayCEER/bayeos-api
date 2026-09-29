@@ -37,6 +37,16 @@ properties:
       resolution:
         type: number
         description: Sample interval in seconds; enables completeness statistics and gap detection
+      first:
+        type: string
+        format: date-time
+        readOnly: true
+        description: First data point timestamp of the timeseries, maintained by the API (ISO-8601 UTC, microsecond precision)
+      last:
+        type: string
+        format: date-time
+        readOnly: true
+        description: Last data point timestamp of the timeseries, maintained by the API (ISO-8601 UTC, microsecond precision)
     additionalProperties: true
   created_at:
     readOnly: true

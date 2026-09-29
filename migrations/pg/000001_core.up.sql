@@ -59,6 +59,7 @@ CREATE TABLE user_chart (
  id SERIAL PRIMARY KEY,
  user_id INTEGER NOT NULL,
  display_name TEXT NOT NULL,
+ description TEXT NOT NULL DEFAULT '',
  created_at timestamp with time zone not null default now() 
  );
 
@@ -154,7 +155,6 @@ update
     node for each row execute procedure update_node_path();
 ;
 
-
 CREATE OR REPLACE FUNCTION get_node_permission(in _node_id integer, in _user_id integer)
  RETURNS integer
  AS $function$
@@ -183,8 +183,6 @@ begin
 end;
 $function$
 LANGUAGE plpgsql;
-
-
 
 create function suppress_wrong_node_display_name() returns trigger as 
 $function$
@@ -230,7 +228,6 @@ $function$
 $function$ 
 language plpgsql;
 
-
 create trigger trg_user_system_check
 before delete on "users"
 for each row execute function suppress_system_user_delete();
@@ -253,9 +250,6 @@ delete
     on
     public.USERS for each row execute function users_delete_cascade();
     
-   
-
-
 -- Indexes
 -- To speed up full text search
 create index node_path_path on node (((path).path));

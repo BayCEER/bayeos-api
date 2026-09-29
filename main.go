@@ -15,10 +15,9 @@ import (
 	"github.com/BayCEER/bayeos/bayeos-api/handler"
 	"github.com/BayCEER/bayeos/bayeos-api/ldap"
 	log "github.com/BayCEER/bayeos/bayeos-api/logger"
-	"github.com/BayCEER/bayeos/bayeos-api/plugin"
-	_ "github.com/BayCEER/bayeos/bayeos-api/plugin/chart"
-	_ "github.com/BayCEER/bayeos/bayeos-api/plugin/timeseries"
+	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/BayCEER/bayeos/bayeos-api/repository"
+
 	"github.com/BayCEER/bayeos/bayeos-api/service"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -214,28 +213,91 @@ func main() {
 		ExpirationMinutes: uint(mustGetEnvInt("WS_ID_TOKEN_EXPIRES_DAYS") * 24 * 60),
 	})
 
+	chartService := service.NewChartService(sqlRepo)
+
+	tracer := otel.Tracer(serviceName)
+	questRepo := repository.NewQuestRepo(questPool, tracer)
+	timeseriesService := service.NewTimeseriesService(nodeService, nodePrivService, questRepo)
+
+	nodeTimeSpanService := NewNodeTimeSpanService(sqlRepo, questRepo)
+
 	// Adding routes
 	handler.NewMainHandler(&handler.Config{
-		AssetsPath:       mustGetEnv("WS_ASSETS_PATH"),
-		Router:           r,
-		BasePath:         basePath,
-		UserService:      userService,
-		NodeService:      nodeService,
-		NodePrivService:  nodePrivService,
-		NodeTokenService: nodeTokenService,
-		IDTokenService:   idTokenService,
-		UserGroupService: userGroupService,
-		SqlDB:            pg,
-		Tracer:           otel.Tracer(serviceName),
-		Quest:            questPool,
-		Plugins:          plugins(),
-		// SeriesService:    seriesService,
+		AssetsPath:          mustGetEnv("WS_ASSETS_PATH"),
+		Router:              r,
+		BasePath:            basePath,
+		UserService:         userService,
+		NodeService:         nodeService,
+		NodePrivService:     nodePrivService,
+		NodeTokenService:    nodeTokenService,
+		IDTokenService:      idTokenService,
+		UserGroupService:    userGroupService,
+		ChartService:        chartService,
+		TimeseriesService:   timeseriesService,
+		NodeTimeSpanService: nodeTimeSpanService,
+
+		SqlDB:  pg,
+		Tracer: otel.Tracer(serviceName),
+		Quest:  questPool,
 	})
 
 	port := mustGetEnv("WS_API_PORT")
 	log.Infof("server started on port:%v", port)
 
 	r.Run(fmt.Sprintf(":%v", port))
+}
+
+// timespanProgressInterval is the number of nodes between progress log lines
+// while the timespan tree is built.
+const timespanProgressInterval = 500
+
+func NewNodeTimeSpanService(sqlRepo repository.SqlRepo, questRepo repository.QuestRepo) service.NodeTimeSpanServiceInterface {
+
+	kind := []string{"Folder", "Timeseries"}
+	nodes, err := sqlRepo.GetAllNodesByKind(context.Background(), kind)
+	if err != nil {
+		log.Errorf("Failed to query Folder and Timeseries  %s", err)
+		return nil
+	}
+
+	tsNodes := make([]model.NodeTimeSpan, 0, len(nodes))
+	start := time.Now()
+	queried, failed := 0, 0
+
+	log.Infof("NodeTimeSpanService: computing timespans for %d nodes", len(nodes))
+
+	for i, node := range nodes {
+		tsNode := model.NodeTimeSpan{ID: node.ID, ParentID: node.ParentID}
+		if node.Kind == model.Kind {
+			queried++
+			first, last, err := questRepo.QueryTimeRange(context.Background(), node.ID)
+			if err != nil {
+				failed++
+				log.Errorf("Failed to get first and last timestamps for node %d: %s", node.ID, err)
+			} else {
+				tsNode.LocalFirst = first
+				tsNode.LocalLast = last
+			}
+		}
+
+		tsNodes = append(tsNodes, tsNode)
+
+		if (i+1)%timespanProgressInterval == 0 {
+			log.Infof("timespan calculation progress: %d/%d nodes", i+1, len(nodes))
+		}
+	}
+
+	log.Infof("Timespans computed for %d series in %s (%d failed)",
+		queried, time.Since(start).Round(time.Millisecond), failed)
+
+	// Create a new NodeTimeSpanService
+	sv, err := service.InitializeTree(tsNodes)
+	if err != nil {
+		log.Errorf("Failed to initialize NodeTimeSpanService: %s", err)
+		return nil
+	}
+	sv.RecomputeAggregations()
+	return sv
 }
 
 func migrateQuestDB(qdb *pgx.Conn, migrationPath string) error {
@@ -319,10 +381,6 @@ func migratePg(db *sql.DB, migrationPath string) error {
 	}
 	log.Info("postgres database migrated")
 	return nil
-}
-
-func plugins() []plugin.Plugin {
-	return plugin.All()
 }
 
 func mustGetEnv(key string) string {

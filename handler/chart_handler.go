@@ -1,4 +1,4 @@
-package chart
+package handler
 
 import (
 	"bytes"
@@ -10,21 +10,12 @@ import (
 
 	mw "github.com/BayCEER/bayeos/bayeos-api/middleware"
 	"github.com/BayCEER/bayeos/bayeos-api/model"
+	"github.com/BayCEER/bayeos/bayeos-api/service"
 	"github.com/BayCEER/bayeos/bayeos-api/strings"
 	"github.com/gin-gonic/gin"
 )
 
-// ChartHandlers bundles the chart HTTP handlers.
-type ChartHandlers struct {
-	service ChartService
-}
-
-// NewChartHandlers returns route handlers for the chart extension.
-func NewChartHandlers(s ChartService) *ChartHandlers {
-	return &ChartHandlers{service: s}
-}
-
-func (h *ChartHandlers) GetCharts(c *gin.Context) {
+func (h *Handler) GetCharts(c *gin.Context) {
 	userID, ok := mw.AuthUserIDFromContext(c)
 	if !ok {
 		mw.AbortWithInternalError(c, "user id not found")
@@ -43,14 +34,14 @@ func (h *ChartHandlers) GetCharts(c *gin.Context) {
 		return
 	}
 
-	if charts, total, err := h.service.GetCharts(c.Request.Context(), userID, pattern, skip, limit); err != nil {
+	if charts, total, err := h.ChartService.GetCharts(c.Request.Context(), userID, pattern, skip, limit); err != nil {
 		mw.AbortWithInternalError(c, "Failed to get charts")
 	} else {
-		c.JSON(http.StatusOK, model.Page[UserChart]{Total: total, Hits: charts})
+		c.JSON(http.StatusOK, model.Page[model.UserChart]{Total: total, Hits: charts})
 	}
 }
 
-func (h *ChartHandlers) GetChart(c *gin.Context) {
+func (h *Handler) GetChart(c *gin.Context) {
 	userID, ok := mw.AuthUserIDFromContext(c)
 	if !ok {
 		mw.AbortWithInternalError(c, "user id not found")
@@ -60,7 +51,7 @@ func (h *ChartHandlers) GetChart(c *gin.Context) {
 	if id, err := strings.ParseStringToInt32(c.Param("id")); err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 	} else {
-		if chart, err := h.service.GetChart(c.Request.Context(), id, userID); err != nil {
+		if chart, err := h.ChartService.GetChart(c.Request.Context(), id, userID); err != nil {
 			mw.AbortWithNotFoundError(c, "Chart", "id", c.Param("id"))
 		} else {
 			c.JSON(http.StatusOK, chart)
@@ -68,7 +59,7 @@ func (h *ChartHandlers) GetChart(c *gin.Context) {
 	}
 }
 
-func (h *ChartHandlers) CreateChart(c *gin.Context) {
+func (h *Handler) CreateChart(c *gin.Context) {
 	userID, ok := mw.AuthUserIDFromContext(c)
 	if !ok {
 		mw.AbortWithInternalError(c, "user id not found")
@@ -82,19 +73,19 @@ func (h *ChartHandlers) CreateChart(c *gin.Context) {
 	}
 
 	// Validate body
-	if err := validateBody(jsonData, &UserChartCreate{}); err != nil {
+	if err := validateBody(jsonData, &model.UserChartCreate{}); err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid request body")
 		return
 	}
 
-	var cre UserChartCreate
+	var cre model.UserChartCreate
 	if err := json.Unmarshal(jsonData, &cre); err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid request body")
 		return
 	}
 
-	if chart, err := h.service.CreateChart(c.Request.Context(), userID, cre); err != nil {
-		if errors.Is(err, ErrChartNameTaken) {
+	if chart, err := h.ChartService.CreateChart(c.Request.Context(), userID, cre); err != nil {
+		if errors.Is(err, service.ErrChartNameTaken) {
 			mw.Abort(c, mw.New(http.StatusConflict, "Conflict", "A chart with this name already exists"))
 			return
 		}
@@ -105,7 +96,7 @@ func (h *ChartHandlers) CreateChart(c *gin.Context) {
 	}
 }
 
-func (h *ChartHandlers) UpdateChart(c *gin.Context) {
+func (h *Handler) UpdateChart(c *gin.Context) {
 	userID, ok := mw.AuthUserIDFromContext(c)
 	if !ok {
 		mw.AbortWithInternalError(c, "user id not found")
@@ -123,22 +114,22 @@ func (h *ChartHandlers) UpdateChart(c *gin.Context) {
 		}
 
 		// Validate body
-		if err := validateBody(jsonData, &UserChartUpdate{}); err != nil {
+		if err := validateBody(jsonData, &model.UserChartUpdate{}); err != nil {
 			mw.AbortWithBadRequestError(c, "Invalid request body")
 			return
 		}
 
-		var upd UserChartUpdate
+		var upd model.UserChartUpdate
 		if err := json.Unmarshal(jsonData, &upd); err != nil {
 			mw.AbortWithBadRequestError(c, "Invalid request body")
 			return
 		}
 
-		if err := h.service.UpdateChart(c.Request.Context(), id, userID, upd); err != nil {
+		if err := h.ChartService.UpdateChart(c.Request.Context(), id, userID, upd); err != nil {
 			if mw.AbortWithBadRequestIfReadOnlyField(c, err) {
 				return
 			}
-			if errors.Is(err, ErrChartNameTaken) {
+			if errors.Is(err, service.ErrChartNameTaken) {
 				mw.Abort(c, mw.New(http.StatusConflict, "Conflict", "A chart with this name already exists"))
 				return
 			}
@@ -152,7 +143,7 @@ func (h *ChartHandlers) UpdateChart(c *gin.Context) {
 	}
 }
 
-func (h *ChartHandlers) DeleteChart(c *gin.Context) {
+func (h *Handler) DeleteChart(c *gin.Context) {
 	userID, ok := mw.AuthUserIDFromContext(c)
 	if !ok {
 		mw.AbortWithInternalError(c, "user id not found")
@@ -162,7 +153,7 @@ func (h *ChartHandlers) DeleteChart(c *gin.Context) {
 	if id, err := strings.ParseStringToInt32(c.Param("id")); err != nil {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 	} else {
-		if err := h.service.DeleteChart(c.Request.Context(), id, userID); err != nil {
+		if err := h.ChartService.DeleteChart(c.Request.Context(), id, userID); err != nil {
 			if mw.AbortWithNotFoundIfNoRows(c, err, "Chart", "id", c.Param("id")) {
 				return
 			}

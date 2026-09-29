@@ -1,4 +1,4 @@
-package chart
+package model
 
 import "gopkg.in/guregu/null.v4"
 

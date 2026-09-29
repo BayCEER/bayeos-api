@@ -1,4 +1,4 @@
-package timeseries
+package service
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/BayCEER/bayeos/bayeos-api/model"
-	"github.com/BayCEER/bayeos/bayeos-api/service"
+	"github.com/BayCEER/bayeos/bayeos-api/repository"
 )
 
 // ErrNotTimeseries is returned when a node exists but is not a Timeseries.
@@ -20,40 +20,39 @@ var ErrNoResolution = errors.New("node metadata requires a resolution value, or 
 // TimeseriesService exposes the plugin's operations on top of the shared node
 // tree and the QuestDB data repo.
 type TimeseriesService interface {
-	Create(ctx context.Context, cre TimeseriesCreate, baseNodeID int32, userID int32) (model.Node, error)
+	Create(ctx context.Context, cre model.TimeseriesCreate, baseNodeID int32, userID int32) (model.Node, error)
 	Get(ctx context.Context, id int32, userID int32) (model.Node, error)
 	Update(ctx context.Context, id int32, fields map[string]interface{}, userID int32) error
 	Delete(ctx context.Context, id int32, userID int32) error
 
-	AddData(ctx context.Context, id int32, pts []DataPoint, userID int32, ignoreInvalid bool) error
-	AddDataBatch(ctx context.Context, series []SeriesData, userID int32, ignoreInvalid bool) error
+	AddData(ctx context.Context, id int32, pts []model.DataPoint, userID int32, ignoreInvalid bool) error
+	AddDataBatch(ctx context.Context, series []model.SeriesData, userID int32, ignoreInvalid bool) error
 
-	QueryData(ctx context.Context, id int32, q TimeseriesQuery, userID int32) (*TimeseriesData, error)
-	QueryDataBatch(ctx context.Context, q TimeseriesDataQuery, userID int32) (*TimeseriesBatchData, error)
-	GetStats(ctx context.Context, id int32, q TimeseriesStatsQuery, userID int32) (*TimeseriesStats, error)
-	GetGaps(ctx context.Context, id int32, q TimeseriesGapsQuery, userID int32) ([]GapInfo, error)
-	GetTimeRange(ctx context.Context, ids []int32, userID int32) ([]SeriesTimeRange, error)
+	QueryData(ctx context.Context, id int32, q model.TimeseriesQuery, userID int32) (*model.TimeseriesData, error)
+	QueryDataBatch(ctx context.Context, q model.TimeseriesDataQuery, userID int32) (*model.TimeseriesBatchData, error)
+	GetStats(ctx context.Context, id int32, q model.TimeseriesStatsQuery, userID int32) (*model.TimeseriesStats, error)
+	GetGaps(ctx context.Context, id int32, q model.TimeseriesGapsQuery, userID int32) ([]model.GapInfo, error)
 }
 
 type timeseriesService struct {
-	nodes   service.NodeService
-	privs   service.NodePrivService
-	queries QuestRepo
+	nodes   NodeService
+	privs   NodePrivService
+	queries repository.QuestRepo
 }
 
 // NewTimeseriesService returns a TimeseriesService backed by node/priv services
 // and a QuestRepo for data.
-func NewTimeseriesService(nodes service.NodeService, privs service.NodePrivService, queries QuestRepo) TimeseriesService {
+func NewTimeseriesService(nodes NodeService, privs NodePrivService, queries repository.QuestRepo) TimeseriesService {
 	return &timeseriesService{nodes: nodes, privs: privs, queries: queries}
 }
 
-func (s *timeseriesService) Create(ctx context.Context, cre TimeseriesCreate, baseNodeID int32, userID int32) (node model.Node, err error) {
+func (s *timeseriesService) Create(ctx context.Context, cre model.TimeseriesCreate, baseNodeID int32, userID int32) (node model.Node, err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.create")
 	defer func() { endServiceSpan(span, err) }()
 	setUserID(span, userID)
 	setNodeID(span, baseNodeID)
 
-	node = model.Node{Kind: Kind}
+	node = model.Node{Kind: model.Kind}
 	if cre.DisplayName != "" {
 		node.DisplayName = cre.DisplayName
 	}
@@ -104,7 +103,7 @@ func (s *timeseriesService) Get(ctx context.Context, id int32, userID int32) (n 
 	if err != nil {
 		return model.Node{}, err
 	}
-	if n.Kind != Kind {
+	if n.Kind != model.Kind {
 		return model.Node{}, ErrNotTimeseries
 	}
 	return n, nil
@@ -138,7 +137,7 @@ func (s *timeseriesService) Delete(ctx context.Context, id int32, userID int32) 
 	return s.nodes.DeleteNode(ctx, id)
 }
 
-func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []DataPoint, userID int32, ignoreInvalid bool) (err error) {
+func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []model.DataPoint, userID int32, ignoreInvalid bool) (err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.add_data")
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
@@ -157,7 +156,7 @@ func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []DataPoi
 // series id is validated first (it must exist, be a readable Timeseries and
 // the caller must have permission); if any series fails the whole batch
 // errors out and nothing is written.
-func (s *timeseriesService) AddDataBatch(ctx context.Context, series []SeriesData, userID int32, ignoreInvalid bool) (err error) {
+func (s *timeseriesService) AddDataBatch(ctx context.Context, series []model.SeriesData, userID int32, ignoreInvalid bool) (err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.add_data_batch")
 	defer func() { endServiceSpan(span, err) }()
 	setUserID(span, userID)
@@ -180,8 +179,8 @@ func isInvalidTimestamp(t time.Time) bool {
 }
 
 // filterInvalidDataPoints drops data points whose timestamps are invalid.
-func filterInvalidDataPoints(pts []DataPoint) []DataPoint {
-	kept := make([]DataPoint, 0, len(pts))
+func filterInvalidDataPoints(pts []model.DataPoint) []model.DataPoint {
+	kept := make([]model.DataPoint, 0, len(pts))
 	for _, p := range pts {
 		if isInvalidTimestamp(p.Ts) {
 			continue
@@ -193,13 +192,13 @@ func filterInvalidDataPoints(pts []DataPoint) []DataPoint {
 
 // filterInvalidSeries drops data points with invalid timestamps from each
 // series, keeping the parallel ts/values/status arrays in lockstep.
-func filterInvalidSeries(series []SeriesData) []SeriesData {
-	out := make([]SeriesData, 0, len(series))
+func filterInvalidSeries(series []model.SeriesData) []model.SeriesData {
+	out := make([]model.SeriesData, 0, len(series))
 	for i := range series {
 		s := series[i]
 		keptTs := make([]time.Time, 0, len(s.Ts))
 		keptVal := make([]float64, 0, len(s.Values))
-		keptStatus := make([]Status, 0, len(s.Status))
+		keptStatus := make([]model.Status, 0, len(s.Status))
 		for j := range s.Ts {
 			if isInvalidTimestamp(s.Ts[j]) {
 				continue
@@ -218,7 +217,7 @@ func filterInvalidSeries(series []SeriesData) []SeriesData {
 	return out
 }
 
-func (s *timeseriesService) QueryData(ctx context.Context, id int32, q TimeseriesQuery, userID int32) (data *TimeseriesData, err error) {
+func (s *timeseriesService) QueryData(ctx context.Context, id int32, q model.TimeseriesQuery, userID int32) (data *model.TimeseriesData, err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.query")
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
@@ -248,9 +247,9 @@ func (s *timeseriesService) QueryData(ctx context.Context, id int32, q Timeserie
 	values := make([]float64, 0, len(pts))
 	// Per-point status is only available on the raw table; rollup views carry
 	// no status, so the field is omitted there.
-	var status []Status
+	var status []model.Status
 	if q.SampleInterval == "" {
-		status = make([]Status, 0, len(pts))
+		status = make([]model.Status, 0, len(pts))
 	}
 	for _, p := range pts {
 		ts = append(ts, p.Ts)
@@ -259,15 +258,15 @@ func (s *timeseriesService) QueryData(ctx context.Context, id int32, q Timeserie
 			if p.Status != nil {
 				status = append(status, *p.Status)
 			} else {
-				status = append(status, StatusNotSet)
+				status = append(status, model.StatusNotSet)
 			}
 		}
 	}
-	series := []SeriesData{{ID: id, Ts: ts, Values: values, Status: status}}
+	series := []model.SeriesData{{ID: id, Ts: ts, Values: values, Status: status}}
 	return newTimeseriesData(q.SampleInterval, sampleFunc, series, tsType), nil
 }
 
-func (s *timeseriesService) QueryDataBatch(ctx context.Context, q TimeseriesDataQuery, userID int32) (data *TimeseriesBatchData, err error) {
+func (s *timeseriesService) QueryDataBatch(ctx context.Context, q model.TimeseriesDataQuery, userID int32) (data *model.TimeseriesBatchData, err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.query_batch")
 	defer func() { endServiceSpan(span, err) }()
 	setUserID(span, userID)
@@ -298,7 +297,7 @@ func (s *timeseriesService) QueryDataBatch(ctx context.Context, q TimeseriesData
 	if err != nil {
 		return nil, err
 	}
-	data = &TimeseriesBatchData{Series: series, TsType: tsType}
+	data = &model.TimeseriesBatchData{Series: series, TsType: tsType}
 	if q.SampleInterval != "" {
 		data.SampleInterval = q.SampleInterval
 		data.SampleFunc = sampleFunc
@@ -341,13 +340,13 @@ func resolveSampleFunc(interval, sampleFunc string) (string, error) {
 // resolveStatusFilter defaults an empty filter to the statuses that feed the
 // rollup views (not set, valid, valid with remarks) and rejects any value
 // outside the supported range.
-func resolveStatusFilter(filter []Status) ([]Status, error) {
+func resolveStatusFilter(filter []model.Status) ([]model.Status, error) {
 	if len(filter) == 0 {
-		return []Status{StatusNotSet, StatusValid, StatusValidWithRemarks}, nil
+		return []model.Status{model.StatusNotSet, model.StatusValid, model.StatusValidWithRemarks}, nil
 	}
 	for _, s := range filter {
-		if s < StatusRemoved || s > StatusInvalid {
-			return nil, fmt.Errorf("unsupported status %d; supported range is %d..%d", s, StatusRemoved, StatusInvalid)
+		if s < model.StatusRemoved || s > model.StatusInvalid {
+			return nil, fmt.Errorf("unsupported status %d; supported range is %d..%d", s, model.StatusRemoved, model.StatusInvalid)
 		}
 	}
 	return filter, nil
@@ -355,8 +354,8 @@ func resolveStatusFilter(filter []Status) ([]Status, error) {
 
 // newTimeseriesData builds the single-series response. When the interval is
 // empty (raw mode) the interval and function fields are omitted.
-func newTimeseriesData(interval, sampleFunc string, series []SeriesData, tsType string) *TimeseriesData {
-	data := &TimeseriesData{Series: series, TsType: tsType}
+func newTimeseriesData(interval, sampleFunc string, series []model.SeriesData, tsType string) *model.TimeseriesData {
+	data := &model.TimeseriesData{Series: series, TsType: tsType}
 	if interval != "" {
 		data.SampleInterval = interval
 		data.SampleFunc = sampleFunc
@@ -364,7 +363,7 @@ func newTimeseriesData(interval, sampleFunc string, series []SeriesData, tsType 
 	return data
 }
 
-func (s *timeseriesService) GetStats(ctx context.Context, id int32, q TimeseriesStatsQuery, userID int32) (stats *TimeseriesStats, err error) {
+func (s *timeseriesService) GetStats(ctx context.Context, id int32, q model.TimeseriesStatsQuery, userID int32) (stats *model.TimeseriesStats, err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.get_stats")
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
@@ -399,7 +398,7 @@ func (s *timeseriesService) GetStats(ctx context.Context, id int32, q Timeseries
 // GetGaps returns the gaps of a timeseries detected on the raw series table.
 // The gap threshold defaults to twice the sampling period derived from the
 // node's resolution metadata and can be overridden with threshold_minutes.
-func (s *timeseriesService) GetGaps(ctx context.Context, id int32, q TimeseriesGapsQuery, userID int32) (gaps []GapInfo, err error) {
+func (s *timeseriesService) GetGaps(ctx context.Context, id int32, q model.TimeseriesGapsQuery, userID int32) (gaps []model.GapInfo, err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.get_gaps")
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
@@ -420,23 +419,6 @@ func (s *timeseriesService) GetGaps(ctx context.Context, id int32, q TimeseriesG
 		limit = *q.Limit
 	}
 	return s.queries.DetectGaps(ctx, id, threshold, q.From, q.To, limit)
-}
-
-// GetTimeRange returns the first and last timestamp of each readable series in
-// ids. Unknown, non-timeseries and non-readable ids are silently skipped rather
-// than failing the whole request, matching QueryDataBatch.
-func (s *timeseriesService) GetTimeRange(ctx context.Context, ids []int32, userID int32) (ranges []SeriesTimeRange, err error) {
-	ctx, span := withServiceSpan(ctx, "timeseries.timerange")
-	defer func() { endServiceSpan(span, err) }()
-	setUserID(span, userID)
-
-	readable := make([]int32, 0, len(ids))
-	for _, id := range ids {
-		if _, err := s.Get(ctx, id, userID); err == nil {
-			readable = append(readable, id)
-		}
-	}
-	return s.queries.ComputeTimeRange(ctx, readable)
 }
 
 // resolveGapThreshold returns the gap detection threshold in minutes. An

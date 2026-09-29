@@ -206,7 +206,8 @@ func (h *Handler) DeleteNode(c *gin.Context) {
 		}
 
 		// Notify plugins (e.g. QuestDB cleanup) with the full set of deleted IDs.
-		h.runNodeDeleteHooks(c.Request.Context(), nodeIDs)
+		// h.runNodeDeleteHooks(c.Request.Context(), nodeIDs)
+
 		c.JSON(http.StatusOK, gin.H{"message": "Node deleted"})
 	}
 }

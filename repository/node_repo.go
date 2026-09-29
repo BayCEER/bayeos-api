@@ -260,3 +260,15 @@ func (r *SqlRepo) GetNodePermission(ctx context.Context, nodeID int32, userID in
 	}
 	return p, nil
 }
+
+func (r *SqlRepo) GetAllNodesByKind(ctx context.Context, kinds []string) ([]model.Node, error) {
+	nodes := []model.Node{}
+	stmt := `select id, coalesce(parent_id,0) as parent_id, kind as kind from node where kind = ANY($1::text[]) order by (path).path`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.SelectContext(c, &nodes, stmt, kinds)
+	endQuerySpan(span, err)
+	if err != nil {
+		return nil, err
+	}
+	return nodes, nil
+}

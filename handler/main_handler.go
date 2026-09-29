@@ -1,12 +1,9 @@
 package handler
 
 import (
-	"context"
-
 	log "github.com/BayCEER/bayeos/bayeos-api/logger"
 	m "github.com/BayCEER/bayeos/bayeos-api/middleware"
 	mo "github.com/BayCEER/bayeos/bayeos-api/model"
-	"github.com/BayCEER/bayeos/bayeos-api/plugin"
 	"github.com/BayCEER/bayeos/bayeos-api/service"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
@@ -16,14 +13,15 @@ import (
 )
 
 type Handler struct {
-	UserService      service.UserService
-	NodeService      service.NodeService
-	NodeTokenService service.NodeTokenService
-	NodePrivService  service.NodePrivService
-	IDTokenService   service.IDTokenService
-	UserGroupService service.UserGroupService
-
-	nodeDeleteHooks []plugin.NodeDeleteHookFunc
+	UserService         service.UserService
+	NodeService         service.NodeService
+	NodeTokenService    service.NodeTokenService
+	NodePrivService     service.NodePrivService
+	IDTokenService      service.IDTokenService
+	UserGroupService    service.UserGroupService
+	ChartService        service.ChartService
+	TimeseriesService   service.TimeseriesService
+	NodeTimeSpanService service.NodeTimeSpanServiceInterface
 }
 
 type Config struct {
@@ -32,33 +30,37 @@ type Config struct {
 	// BasePath is the URL prefix (context) under which every handler is
 	// registered, e.g. "bayeos-api". Routes drop the legacy "/api" segment and
 	// are mounted as /<BasePath>/<route>.
-	BasePath         string
-	UserService      service.UserService
-	NodeService      service.NodeService
-	NodeTokenService service.NodeTokenService
-	NodePrivService  service.NodePrivService
-	IDTokenService   service.IDTokenService
-	UserGroupService service.UserGroupService
-	Tracer           trace.Tracer
+	BasePath            string
+	UserService         service.UserService
+	NodeService         service.NodeService
+	NodeTokenService    service.NodeTokenService
+	NodePrivService     service.NodePrivService
+	IDTokenService      service.IDTokenService
+	UserGroupService    service.UserGroupService
+	ChartService        service.ChartService
+	TimeseriesService   service.TimeseriesService
+	NodeTimeSpanService service.NodeTimeSpanServiceInterface
+
+	Tracer trace.Tracer
 
 	// SqlDB is the PostgreSQL connection handed to plugins via plugin.Host.
 	SqlDB *sqlx.DB
 
 	// Quest is the QuestDB connection pool handed to plugins.
 	Quest *pgxpool.Pool
-	// Plugins are registered via NewMainHandler after the secured route
-	// group is built.
-	Plugins []plugin.Plugin
 }
 
 func NewMainHandler(c *Config) {
 	h := &Handler{
-		UserService:      c.UserService,
-		NodeService:      c.NodeService,
-		NodeTokenService: c.NodeTokenService,
-		NodePrivService:  c.NodePrivService,
-		IDTokenService:   c.IDTokenService,
-		UserGroupService: c.UserGroupService,
+		UserService:         c.UserService,
+		NodeService:         c.NodeService,
+		NodeTokenService:    c.NodeTokenService,
+		NodePrivService:     c.NodePrivService,
+		IDTokenService:      c.IDTokenService,
+		UserGroupService:    c.UserGroupService,
+		ChartService:        c.ChartService,
+		TimeseriesService:   c.TimeseriesService,
+		NodeTimeSpanService: c.NodeTimeSpanService,
 	}
 
 	r := c.Router
@@ -80,6 +82,7 @@ func NewMainHandler(c *Config) {
 	sec.PUT("/auth/password", h.SetPassword)
 	sec.POST("/auth/signout", h.SignOut)
 
+	// Users
 	sec.GET("/users", h.GetUsers)
 	sec.GET("/users/:id", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.GetUser)
 
@@ -94,7 +97,7 @@ func NewMainHandler(c *Config) {
 	sec.PATCH("/users/:id", m.IdFromPath("id", "UserID"), m.UserPermissionCheck(), h.UpdateUser)
 	sec.DELETE("/users/:id", m.AuthSuper(), h.DeleteUser)
 
-	// User group management is restricted to super users
+	// User group
 	sec.GET("/usergroups", m.AuthSuper(), h.GetUserGroups)
 	sec.POST("/usergroups", m.AuthSuper(), h.CreateUserGroup)
 
@@ -108,71 +111,47 @@ func NewMainHandler(c *Config) {
 
 	sec.GET("/usergroups/:id/privileges", m.AuthSuper(), h.GetUserGroupPrivileges)
 
-	// With permission check implemented in handler
+	// Node
 	sec.GET("/nodes/search", h.SearchNodes)
 	sec.GET("/nodes", h.GetNodes)
 
-	// Node Permissions
 	rwCheck := m.NodePermissionCheck(h.NodeService, mo.READ_PERMISSION+mo.WRITE_PERMISSION)
 	rwgCheck := m.NodePermissionCheck(h.NodeService, mo.FULL_PERMISSION)
 
 	sec.POST("/nodes", m.ResolvePathOrIdFromBody("parent_id", "node_path", "NodeID"), rwCheck, h.CreateNode)
-
 	sec.GET("/nodes/:id/children", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeChildren)
 	sec.GET("/nodes/:id/parents", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeParents)
-
 	sec.GET("/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNode)
 	sec.PATCH("/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.UpdateNode)
 	sec.DELETE("/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteNode)
-
 	sec.GET("/nodes/:id/tokens", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeTokens)
 	sec.POST("/nodes/:id/tokens", m.IdFromPath("id", "NodeID"), rwCheck, h.CreateNodeToken)
-
 	sec.GET("/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeToken)
 	sec.DELETE("/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteNodeToken)
 	sec.PATCH("/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.UpdateNodeToken)
-
 	sec.GET("/nodes/:id/privileges", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodePrivs)
 	sec.POST("/nodes/:id/privileges", m.IdFromPath("id", "NodeID"), rwgCheck, h.CreateNodePriv)
-
 	sec.GET("/nodes/:id/privileges/:pid", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodePriv)
 	sec.PATCH("/nodes/:id/privileges/:pid", m.IdFromPath("id", "NodeID"), rwgCheck, h.UpdateNodePriv)
 	sec.DELETE("/nodes/:id/privileges/:pid", m.IdFromPath("id", "NodeID"), rwgCheck, h.DeleteNodePrivilege)
 
-	registerPlugins(h, c, sec)
-}
+	// Timeseries
+	sec.POST("/timeseries", m.ResolvePathOrIdFromBody("parent_id", "node_path", "NodeID"), rwCheck, h.CreateTimeseries)
+	sec.GET("/timeseries/data", h.QueryTimeseriesDataBatch)
+	sec.POST("/timeseries/data", h.AddTimeseriesDataBatch)
+	sec.GET("/timeseries/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.GetTimeseries)
+	sec.PATCH("/timeseries/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.UpdateTimeseries)
+	sec.DELETE("/timeseries/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteTimeseries)
+	sec.POST("/timeseries/:id/data", m.IdFromPath("id", "NodeID"), rwCheck, h.AddTimeseriesData)
+	sec.GET("/timeseries/:id/data", m.IdFromPath("id", "NodeID"), rwCheck, h.QueryTimeseriesData)
+	sec.GET("/timeseries/:id/stats", m.IdFromPath("id", "NodeID"), rwCheck, h.GetTimeseriesStats)
+	sec.GET("/timeseries/:id/gaps", m.IdFromPath("id", "NodeID"), rwCheck, h.GetTimeseriesGaps)
 
-// registerPlugins hands each plugin the secured route group and shared
-// infrastructure, then stores any node-delete hooks they register.
-func registerPlugins(h *Handler, c *Config, sec gin.IRoutes) {
-	host := &plugin.Host{
-		Router:          sec,
-		Quest:           c.Quest,
-		SqlDB:           c.SqlDB,
-		NodeService:     c.NodeService,
-		NodePrivService: c.NodePrivService,
-		Tracer:          c.Tracer,
-	}
-	for _, p := range c.Plugins {
-		if p == nil {
-			continue
-		}
-		if err := p.Register(host); err != nil {
-			log.Errorf("plugin %q registration failed: %v", p.Name(), err)
-			continue
-		}
-		h.nodeDeleteHooks = append(h.nodeDeleteHooks, host.NodeDeleteHooks()...)
-		log.Infof("plugin %q registered", p.Name())
-	}
-}
+	// Chart
+	sec.GET("/charts", h.GetCharts)
+	sec.POST("/charts", h.CreateChart)
+	sec.GET("/charts/:id", h.GetChart)
+	sec.PATCH("/charts/:id", h.UpdateChart)
+	sec.DELETE("/charts/:id", h.DeleteChart)
 
-// runNodeDeleteHooks invokes all registered node-delete hooks after nodes have
-// been removed from the Postgres node table. Errors are logged but do not fail
-// the already-committed node deletion.
-func (h *Handler) runNodeDeleteHooks(ctx context.Context, nodeIDs []int32) {
-	for _, hook := range h.nodeDeleteHooks {
-		if err := hook(ctx, nodeIDs); err != nil {
-			log.Errorf("node delete hook failed for nodes %v: %v", nodeIDs, err)
-		}
-	}
 }

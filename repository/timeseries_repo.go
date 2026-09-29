@@ -1,4 +1,4 @@
-package timeseries
+package repository
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,16 +20,16 @@ const (
 // QuestRepo is the interface for timeseries data access. It is implemented by
 // questRepo and satisfied by the QuestDB client.
 type QuestRepo interface {
-	Insert(ctx context.Context, nodeID int32, pts []DataPoint) error
-	InsertBatch(ctx context.Context, series []SeriesData) error
-	UpsertStatusBatch(ctx context.Context, nodeID int32, pts []StatusPoint) error
-	Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []Status) ([]DataPoint, error)
-	QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, statusFilter []Status) ([]SeriesData, error)
+	Insert(ctx context.Context, nodeID int32, pts []model.DataPoint) error
+	InsertBatch(ctx context.Context, series []model.SeriesData) error
+	UpsertStatusBatch(ctx context.Context, nodeID int32, pts []model.StatusPoint) error
+	Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []model.Status) ([]model.DataPoint, error)
+	QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, statusFilter []model.Status) ([]model.SeriesData, error)
 
-	ComputeStats(ctx context.Context, nodeID int32, from, to *time.Time, agg string) (*TimeseriesStats, error)
-	ComputeCompleteness(ctx context.Context, nodeID int32, resolutionSec int, from, to *time.Time) (*CompletenessStats, error)
-	DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time, limit int) ([]GapInfo, error)
-	ComputeTimeRange(ctx context.Context, ids []int32) ([]SeriesTimeRange, error)
+	ComputeStats(ctx context.Context, nodeID int32, from, to *time.Time, agg string) (*model.TimeseriesStats, error)
+	ComputeCompleteness(ctx context.Context, nodeID int32, resolutionSec int, from, to *time.Time) (*model.CompletenessStats, error)
+	DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time, limit int) ([]model.GapInfo, error)
+	QueryTimeRange(ctx context.Context, id int32) (time.Time, time.Time, error)
 }
 
 // questRepo persists observations in the QuestDB series table. The series id is
@@ -43,7 +44,7 @@ func NewQuestRepo(conn *pgxpool.Pool, tracer trace.Tracer) QuestRepo {
 	return &questRepo{conn: conn, tracer: tracer}
 }
 
-func (r *questRepo) Insert(ctx context.Context, nodeID int32, pts []DataPoint) error {
+func (r *questRepo) Insert(ctx context.Context, nodeID int32, pts []model.DataPoint) error {
 	if len(pts) == 0 {
 		return nil
 	}
@@ -56,7 +57,7 @@ func (r *questRepo) Insert(ctx context.Context, nodeID int32, pts []DataPoint) e
 		// status is stored as StatusNotSet so that the value is never NULL.
 		status := p.Status
 		if status == nil {
-			s := StatusNotSet
+			s := model.StatusNotSet
 			status = &s
 		}
 		batch.Queue(
@@ -77,7 +78,7 @@ func (r *questRepo) Insert(ctx context.Context, nodeID int32, pts []DataPoint) e
 // InsertBatch writes points for one or more series in a single batch. Each
 // SeriesData carries parallel timestamp/values arrays; the id is stored
 // verbatim as the series id.
-func (r *questRepo) InsertBatch(ctx context.Context, series []SeriesData) error {
+func (r *questRepo) InsertBatch(ctx context.Context, series []model.SeriesData) error {
 	ctx, span := r.span(ctx, "timeseries.insert_batch")
 	defer span.End()
 
@@ -89,7 +90,7 @@ func (r *questRepo) InsertBatch(ctx context.Context, series []SeriesData) error 
 		for i := range s.Ts {
 			// The status column is always written explicitly; a series without
 			// a status array is stored as StatusNotSet so the value is never NULL.
-			status := StatusNotSet
+			status := model.StatusNotSet
 			if len(s.Status) > 0 {
 				status = s.Status[i]
 			}
@@ -115,7 +116,7 @@ func (r *questRepo) InsertBatch(ctx context.Context, series []SeriesData) error 
 // UpsertStatusBatch updates the status column of the given points. QuestDB
 // upserts on (id, ts), so the value column must be provided alongside the new
 // status; the row's value is preserved or set by the caller's payload.
-func (r *questRepo) UpsertStatusBatch(ctx context.Context, nodeID int32, pts []StatusPoint) error {
+func (r *questRepo) UpsertStatusBatch(ctx context.Context, nodeID int32, pts []model.StatusPoint) error {
 	if len(pts) == 0 {
 		return nil
 	}
@@ -139,7 +140,7 @@ func (r *questRepo) UpsertStatusBatch(ctx context.Context, nodeID int32, pts []S
 	return nil
 }
 
-func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []Status) ([]DataPoint, error) {
+func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []model.Status) ([]model.DataPoint, error) {
 	ctx, span := r.span(ctx, "timeseries.query")
 	defer span.End()
 
@@ -195,14 +196,14 @@ func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time
 	}
 	defer rows.Close()
 
-	pts := []DataPoint{}
+	pts := []model.DataPoint{}
 	for rows.Next() {
-		var p DataPoint
+		var p model.DataPoint
 		var err error
 		if statusCol != "" {
 			var st pgtype.Int4
 			if err = rows.Scan(&p.Ts, &p.Value, &st); err == nil && st.Valid {
-				status := Status(st.Int32)
+				status := model.Status(st.Int32)
 				p.Status = &status
 			}
 		} else {
@@ -219,12 +220,12 @@ func (r *questRepo) Query(ctx context.Context, nodeID int32, from, to *time.Time
 	return pts, nil
 }
 
-func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, statusFilter []Status) ([]SeriesData, error) {
+func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, statusFilter []model.Status) ([]model.SeriesData, error) {
 	ctx, span := r.span(ctx, "timeseries.query_batch")
 	defer span.End()
 
 	if len(ids) == 0 {
-		return []SeriesData{}, nil
+		return []model.SeriesData{}, nil
 	}
 
 	timeCol, valueCol, statusCol, table := "ts", "value", "cast(status as int) AS st", rawTable
@@ -282,16 +283,16 @@ func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.
 	}
 	defer rows.Close()
 
-	seriesByID := map[int32]*SeriesData{}
+	seriesByID := map[int32]*model.SeriesData{}
 	var order []int32
 	for rows.Next() {
 		var id int32
-		var p DataPoint
+		var p model.DataPoint
 		var err error
 		if statusCol != "" {
 			var st pgtype.Int4
 			if err = rows.Scan(&id, &p.Ts, &p.Value, &st); err == nil && st.Valid {
-				status := Status(st.Int32)
+				status := model.Status(st.Int32)
 				p.Status = &status
 			}
 		} else {
@@ -302,7 +303,7 @@ func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.
 		}
 		s, ok := seriesByID[id]
 		if !ok {
-			s = &SeriesData{ID: id}
+			s = &model.SeriesData{ID: id}
 			seriesByID[id] = s
 			order = append(order, id)
 		}
@@ -312,7 +313,7 @@ func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.
 			if p.Status != nil {
 				s.Status = append(s.Status, *p.Status)
 			} else {
-				s.Status = append(s.Status, StatusNotSet)
+				s.Status = append(s.Status, model.StatusNotSet)
 			}
 		}
 	}
@@ -320,14 +321,14 @@ func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.
 		return nil, err
 	}
 
-	series := make([]SeriesData, 0, len(order))
+	series := make([]model.SeriesData, 0, len(order))
 	for _, id := range order {
 		series = append(series, *seriesByID[id])
 	}
 	return series, nil
 }
 
-func (r *questRepo) ComputeStats(ctx context.Context, nodeID int32, from, to *time.Time, agg string) (*TimeseriesStats, error) {
+func (r *questRepo) ComputeStats(ctx context.Context, nodeID int32, from, to *time.Time, agg string) (*model.TimeseriesStats, error) {
 	ctx, span := r.span(ctx, "timeseries.compute_stats")
 	defer span.End()
 
@@ -358,7 +359,7 @@ func (r *questRepo) ComputeStats(ctx context.Context, nodeID int32, from, to *ti
 		return nil, err
 	}
 	if count == 0 {
-		return &TimeseriesStats{}, nil
+		return &model.TimeseriesStats{}, nil
 	}
 
 	query := fmt.Sprintf(`SELECT
@@ -371,7 +372,7 @@ func (r *questRepo) ComputeStats(ctx context.Context, nodeID int32, from, to *ti
 		stddev(value) AS stddev
 	FROM %[2]s %s`, timeCol, table, where)
 
-	var s TimeseriesStats
+	var s model.TimeseriesStats
 	err = r.conn.QueryRow(ctx, query, args...).Scan(
 		&s.Count, &s.FirstTs, &s.LastTs,
 		&s.Min, &s.Max, &s.Mean, &s.Stddev,
@@ -383,7 +384,7 @@ func (r *questRepo) ComputeStats(ctx context.Context, nodeID int32, from, to *ti
 	return &s, nil
 }
 
-func (r *questRepo) ComputeCompleteness(ctx context.Context, nodeID int32, resolutionSec int, from, to *time.Time) (*CompletenessStats, error) {
+func (r *questRepo) ComputeCompleteness(ctx context.Context, nodeID int32, resolutionSec int, from, to *time.Time) (*model.CompletenessStats, error) {
 	ctx, span := r.span(ctx, "timeseries.compute_completeness")
 	defer span.End()
 
@@ -409,7 +410,7 @@ func (r *questRepo) ComputeCompleteness(ctx context.Context, nodeID int32, resol
 		round(actual_count * 100.0 / ((end_ts - start_ts) / 1000000 / $2 + 1), 2) AS completeness_pct
 	FROM range_bounds`
 
-	var c CompletenessStats
+	var c model.CompletenessStats
 	err := r.conn.QueryRow(ctx, query, args...).Scan(
 		&c.ExpectedCount, &c.ActualCount, &c.MissingCount, &c.CompletenessPct,
 	)
@@ -419,7 +420,7 @@ func (r *questRepo) ComputeCompleteness(ctx context.Context, nodeID int32, resol
 	return &c, nil
 }
 
-func (r *questRepo) DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time, limit int) ([]GapInfo, error) {
+func (r *questRepo) DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time, limit int) ([]model.GapInfo, error) {
 	ctx, span := r.span(ctx, "timeseries.detect_gaps")
 	defer span.End()
 
@@ -455,9 +456,9 @@ func (r *questRepo) DetectGaps(ctx context.Context, nodeID int32, thresholdMinut
 	}
 	defer rows.Close()
 
-	var gaps []GapInfo
+	var gaps []model.GapInfo
 	for rows.Next() {
-		var g GapInfo
+		var g model.GapInfo
 		if err := rows.Scan(&g.Start, &g.End, &g.DurationMinutes); err != nil {
 			return nil, err
 		}
@@ -469,71 +470,39 @@ func (r *questRepo) DetectGaps(ctx context.Context, nodeID int32, thresholdMinut
 	return gaps, nil
 }
 
-// ComputeTimeRange returns the first and last timestamp of each series in the
-// given ids list, preserving the request order. Series without data are omitted
-// from the result.
-func (r *questRepo) ComputeTimeRange(ctx context.Context, ids []int32) ([]SeriesTimeRange, error) {
+func (r *questRepo) QueryTimeRange(ctx context.Context, id int32) (time.Time, time.Time, error) {
+
 	ctx, span := r.span(ctx, "timeseries.timerange")
 	defer span.End()
 
-	if len(ids) == 0 {
-		return []SeriesTimeRange{}, nil
-	}
+	sql := `SELECT 1,first(ts) FROM series where id = $1
+			UNION ALL
+			SELECT 2,last(ts) FROM series where id = $1`
 
-	placeholders := make([]string, 0, len(ids))
-	idArgs := make([]any, 0, len(ids))
-	for _, id := range ids {
-		placeholders = append(placeholders, fmt.Sprintf("$%d", len(idArgs)+1))
-		idArgs = append(idArgs, fmt.Sprintf("%d", id))
-	}
-	in := "(" + strings.Join(placeholders, ", ") + ")"
+	rows, err := r.conn.Query(ctx, sql, fmt.Sprintf("%d", id))
 
-	// Collect the timestamp bounds per series.
-	bounds := make(map[int32]SeriesTimeRange, len(ids))
-	for _, tsCol := range []string{"first", "last"} {
-		rows, err := r.conn.Query(ctx, fmt.Sprintf(
-			"SELECT CAST(id AS INT) AS id, %s(ts) AS ts_bound FROM series WHERE id IN %s GROUP BY id", tsCol, in,
-		), idArgs...)
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			var id int32
-			var ts time.Time
-			if err := rows.Scan(&id, &ts); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			e, ok := bounds[id]
-			if !ok {
-				e = SeriesTimeRange{ID: id}
-			}
-			if tsCol == "first" {
-				e.First = ts
-			} else {
-				e.Last = ts
-			}
-			bounds[id] = e
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		rows.Close()
+	if err != nil {
+		return time.Time{}, time.Time{}, err
 	}
+	defer rows.Close()
 
-	// Preserve the requested id order; skip ids without any data.
-	out := make([]SeriesTimeRange, 0, len(ids))
-	seen := make(map[int32]bool, len(ids))
-	for _, id := range ids {
-		e, ok := bounds[id]
-		if !ok || seen[id] {
-			continue
+	first := time.Time{}
+	last := time.Time{}
+
+	for rows.Next() {
+		var rowType int
+		var ts time.Time
+		if err := rows.Scan(&rowType, &ts); err != nil {
+			return time.Time{}, time.Time{}, err
 		}
-		seen[id] = true
-		out = append(out, e)
+		switch rowType {
+		case 1:
+			first = ts
+		case 2:
+			last = ts
+		}
 	}
-	return out, nil
+	return first, last, nil
 }
 
 // span starts a span on the repo's tracer (if set) and returns the context and

@@ -75,13 +75,19 @@ func (m Metadata) MarshalJSON() ([]byte, error) {
 	return m.RawMessage, nil
 }
 
-// Map returns the metadata as a Go map, defaulting to an empty map.
+// Map returns the metadata as a Go map, defaulting to an empty map. The
+// returned map is never nil, so callers may write to it directly. Note that
+// unmarshalling the JSON literal null into a map sets it to nil without
+// reporting an error, so the result is normalized back to an empty map.
 func (m Metadata) Map() map[string]any {
 	out := map[string]any{}
 	if len(m.RawMessage) == 0 {
 		return out
 	}
 	if err := json.Unmarshal(m.RawMessage, &out); err != nil {
+		return map[string]any{}
+	}
+	if out == nil {
 		return map[string]any{}
 	}
 	return out
