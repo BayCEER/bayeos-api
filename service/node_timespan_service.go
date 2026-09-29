@@ -7,13 +7,18 @@ import (
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 )
 
+// NodeTimeSpanServiceInterface exposes a tree of per-node time spans. Every
+// method leaves the tree internally consistent: aggregates are always correct
+// for the current topology, so callers never have to repair them afterwards.
+// Adding a public "recompute" step would make that a caller obligation, and it
+// was routinely forgotten.
 type NodeTimeSpanServiceInterface interface {
-	RecomputeAggregations()
 	SetLocalMetrics(nodeID int32, first, last time.Time)
 	AddNode(nodeID int32, parentID int32)
 	AddNodes(nodes []model.NodeTimeSpan)
 	MoveNode(nodeID int32, newParentID int32)
 	DeleteNode(nodeID int32)
+	DeleteNodes(nodeIDs []int32)
 	GetTimeSpan(nodeID int32) (first time.Time, last time.Time, exists bool)
 	GetNodes() []model.NodeTimeSpan
 }
@@ -31,24 +36,20 @@ func NewNodeTimeSpanService() *NodeTimeSpanService {
 	}
 }
 
-// InitializeTreeFromNodes initializes the Span from an array of Node structs
-// Assumes the input nodes array is already sorted in the correct order
-// (parents before children)
+// InitializeTree builds a span service from a flat node list. The input order
+// does not matter: the tree is re-sorted parents-before-children and
+// aggregated before it is returned, so the result is ready to serve reads.
 func InitializeTree(nodes []model.NodeTimeSpan) (*NodeTimeSpanService, error) {
-	indexMap := make(map[int32]int)
-
-	// Build indexMap directly from the input array
-	for i, node := range nodes {
-		indexMap[node.ID] = i
-	}
-
 	ts := &NodeTimeSpanService{
-		nodes:    nodes,
-		indexMap: indexMap,
+		nodes:    append([]model.NodeTimeSpan(nil), nodes...),
+		indexMap: make(map[int32]int, len(nodes)),
 	}
 
-	// Build index cache
-	ts.rebuildParentIndices()
+	// Both the aggregation sweep and the delete cascade depend on every parent
+	// appearing before its children, so the ordering is established here rather
+	// than assumed of the caller's slice.
+	ts.rebuildFromInternalSlice()
+	ts.recomputeAggregationsLocked()
 	return ts, nil
 }
 
@@ -67,12 +68,9 @@ func (ts *NodeTimeSpanService) rebuildParentIndices() {
 	}
 }
 
-// RecomputeAggregations calculates min(first) and max(last) from bottom to top.
-// Due to the flat memory layout, this runs in a few microseconds for 50K nodes.
-func (ts *NodeTimeSpanService) RecomputeAggregations() {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
-
+// recomputeAggregationsLocked calculates min(first) and max(last) from bottom to
+// top. The caller must already hold ts.mu for writing.
+func (ts *NodeTimeSpanService) recomputeAggregationsLocked() {
 	// Step A: Reset all aggregates to the current local state
 	for i := range ts.nodes {
 		ts.nodes[i].AggFirst = ts.nodes[i].LocalFirst
@@ -106,15 +104,20 @@ func (ts *NodeTimeSpanService) RecomputeAggregations() {
 	}
 }
 
-// SetLocalMetrics allows fast setting of data before a Recompute call
+// SetLocalMetrics records the local bounds of a node and re-aggregates its
+// ancestors. The full sweep is a few microseconds for 50K nodes, which is
+// cheaper than maintaining per-node deltas up a chain.
 func (ts *NodeTimeSpanService) SetLocalMetrics(nodeID int32, first, last time.Time) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
-	if idx, exists := ts.indexMap[nodeID]; exists {
-		ts.nodes[idx].LocalFirst = first
-		ts.nodes[idx].LocalLast = last
+	idx, exists := ts.indexMap[nodeID]
+	if !exists {
+		return
 	}
+	ts.nodes[idx].LocalFirst = first
+	ts.nodes[idx].LocalLast = last
+	ts.recomputeAggregationsLocked()
 }
 
 // AddNode adds a new node to the Span
@@ -134,18 +137,17 @@ func (ts *NodeTimeSpanService) AddNode(nodeID int32, parentID int32) {
 		ParentIdx: -1,
 	}
 
-	// Set index for the new node
-	ts.indexMap[nodeID] = len(ts.nodes)
-
 	// Add to the internal list
 	ts.nodes = append(ts.nodes, newNode)
 
-	// Set ParentIdx for the new node
-	if parentID != 0 {
-		if parentIdx, exists := ts.indexMap[parentID]; exists {
-			ts.nodes[len(ts.nodes)-1].ParentIdx = int32(parentIdx)
-		}
-	}
+	// The internal slice must stay ordered parents-before-children, because
+	// the aggregation sweep runs backwards over it. A tail append places the
+	// new node after any of its own descendants, so the order is rebuilt.
+	ts.rebuildFromInternalSlice()
+
+	// No re-aggregation is needed: the new node carries zero Local bounds, the
+	// roll-up skips zero children, and no existing node changed parent. Every
+	// stored aggregate is therefore still correct.
 }
 
 // AddNodes adds multiple new nodes to the Span
@@ -162,22 +164,24 @@ func (ts *NodeTimeSpanService) AddNodes(nodes []model.NodeTimeSpan) {
 	}
 
 	// Add only new nodes
+	added := false
 	for _, node := range nodes {
 		if !existingNodes[node.ID] {
-			// Set index for the new node
-			ts.indexMap[node.ID] = len(ts.nodes)
-
-			// Add to the internal list
 			ts.nodes = append(ts.nodes, node)
-
-			// Set ParentIdx for the new node
-			if node.ParentID != 0 {
-				if parentIdx, exists := ts.indexMap[node.ParentID]; exists {
-					ts.nodes[len(ts.nodes)-1].ParentIdx = int32(parentIdx)
-				}
-			}
+			added = true
 		}
 	}
+	if !added {
+		return
+	}
+
+	// Restore the parents-before-children ordering the backward aggregation
+	// sweep depends on; see AddNode.
+	ts.rebuildFromInternalSlice()
+
+	// Unlike AddNode, the incoming nodes may carry non-zero Local bounds, so
+	// the ancestors of each added node have to pick them up.
+	ts.recomputeAggregationsLocked()
 }
 
 // MoveNode moves a node to a new parent and rebuilds the topology
@@ -195,18 +199,41 @@ func (ts *NodeTimeSpanService) MoveNode(nodeID int32, newParentID int32) {
 
 	// Since the topology has changed, use the BFS algorithm to re-sort
 	ts.rebuildFromInternalSlice()
+
+	// The subtree stops feeding the old ancestors and starts feeding the new
+	// ones, and neither side is updated by the move itself.
+	ts.recomputeAggregationsLocked()
 }
 
-// DeleteNode removes a node and all its sub-children (cascading)
+// DeleteNode removes a node and all its sub-children (cascading).
 func (ts *NodeTimeSpanService) DeleteNode(nodeID int32) {
+	ts.DeleteNodes([]int32{nodeID})
+}
+
+// DeleteNodes removes every given node together with all of its descendants, and
+// re-aggregates once for the whole batch. Deleting a subtree that spans many
+// nodes costs the same as deleting a single one, instead of a full rebuild per
+// id.
+func (ts *NodeTimeSpanService) DeleteNodes(nodeIDs []int32) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
-	deletedIDs := make(map[int32]bool)
-	deletedIDs[nodeID] = true
+	deletedIDs := make(map[int32]bool, len(nodeIDs))
+	for _, id := range nodeIDs {
+		// Unknown ids are dropped so that a batch naming only missing nodes
+		// short-circuits instead of rebuilding an unchanged tree.
+		if _, exists := ts.indexMap[id]; exists {
+			deletedIDs[id] = true
+		}
+	}
+	if len(deletedIDs) == 0 {
+		return
+	}
 
-	// Use the existing sorting: children are always further back!
-	for i := 0; i < len(ts.nodes); i++ {
+	// One forward pass suffices: rebuildFromInternalSlice keeps every parent
+	// ahead of its children, so a node's parent is already in deletedIDs by the
+	// time that node is reached, and the deletion cascades transitively.
+	for i := range ts.nodes {
 		if deletedIDs[ts.nodes[i].ParentID] {
 			deletedIDs[ts.nodes[i].ID] = true
 		}
@@ -222,6 +249,11 @@ func (ts *NodeTimeSpanService) DeleteNode(nodeID int32) {
 
 	ts.nodes = newNodes
 	ts.rebuildFromInternalSlice()
+
+	// Removed data contributed to the bounds of every ancestor, and a stale
+	// bound can only err outwards (an old first, a late last), so it never
+	// corrects itself.
+	ts.recomputeAggregationsLocked()
 }
 
 // Helper function for internal rebuild after structural changes
@@ -239,17 +271,34 @@ func (ts *NodeTimeSpanService) rebuildFromInternalSlice() {
 
 	ordered := make([]model.NodeTimeSpan, 0, len(ts.nodes))
 	indexMap := make(map[int32]int)
+	emitted := make(map[int32]bool, len(ts.nodes))
 
 	queue := rootNodes
 	for len(queue) > 0 {
 		curr := queue[0]
 		queue = queue[1:]
 
+		if emitted[curr.ID] {
+			continue
+		}
+		emitted[curr.ID] = true
 		indexMap[curr.ID] = len(ordered)
 		ordered = append(ordered, curr)
 
 		if children, exists := byParent[curr.ID]; exists {
 			queue = append(queue, children...)
+		}
+	}
+
+	// A node whose parent is not part of this slice (e.g. a kind the loader
+	// filtered out) is never reached by the walk. Keep it rather than dropping
+	// it; rebuildParentIndices gives it ParentIdx = -1 so it still aggregates
+	// locally but no longer rolls up into an ancestor.
+	for _, n := range ts.nodes {
+		if !emitted[n.ID] {
+			emitted[n.ID] = true
+			indexMap[n.ID] = len(ordered)
+			ordered = append(ordered, n)
 		}
 	}
 

@@ -15,7 +15,6 @@ import (
 	"github.com/BayCEER/bayeos/bayeos-api/handler"
 	"github.com/BayCEER/bayeos/bayeos-api/ldap"
 	log "github.com/BayCEER/bayeos/bayeos-api/logger"
-	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/BayCEER/bayeos/bayeos-api/repository"
 
 	"github.com/BayCEER/bayeos/bayeos-api/service"
@@ -203,7 +202,6 @@ func main() {
 	log.Debugf("creating services")
 
 	userService := service.NewUserService(sqlRepo, ldapRepo)
-	nodeService := service.NewNodeService(sqlRepo)
 	nodePrivService := service.NewNodePrivService(sqlRepo)
 	nodeTokenService := service.NewNodeTokenService(sqlRepo)
 	userGroupService := service.NewUserGroupService(sqlRepo)
@@ -217,24 +215,36 @@ func main() {
 
 	tracer := otel.Tracer(serviceName)
 	questRepo := repository.NewQuestRepo(questPool, tracer)
-	timeseriesService := service.NewTimeseriesService(nodeService, nodePrivService, questRepo)
 
-	nodeTimeSpanService := NewNodeTimeSpanService(sqlRepo, questRepo)
+	// The node service is decorated before any consumer is built, so that
+	// every consumer, including the timeseries service below, reads nodes
+	// through the same decorator chain. See nodes.go.
+	nodeTimeSpanService, err := newNodeTimeSpanService(sqlRepo, questRepo)
+	if err != nil {
+		log.Fatalf("failed to build the node time span service: %v", err)
+	}
+
+	nodeService := decorateNodes(
+		service.NewNodeService(sqlRepo),
+		nodeTimeSpanService,
+		timeSpanLoader(sqlRepo, questRepo),
+	)
+
+	timeseriesService := service.NewTimeseriesService(nodeService, nodePrivService, questRepo)
 
 	// Adding routes
 	handler.NewMainHandler(&handler.Config{
-		AssetsPath:          mustGetEnv("WS_ASSETS_PATH"),
-		Router:              r,
-		BasePath:            basePath,
-		UserService:         userService,
-		NodeService:         nodeService,
-		NodePrivService:     nodePrivService,
-		NodeTokenService:    nodeTokenService,
-		IDTokenService:      idTokenService,
-		UserGroupService:    userGroupService,
-		ChartService:        chartService,
-		TimeseriesService:   timeseriesService,
-		NodeTimeSpanService: nodeTimeSpanService,
+		AssetsPath:        mustGetEnv("WS_ASSETS_PATH"),
+		Router:            r,
+		BasePath:          basePath,
+		UserService:       userService,
+		NodeService:       nodeService,
+		NodePrivService:   nodePrivService,
+		NodeTokenService:  nodeTokenService,
+		IDTokenService:    idTokenService,
+		UserGroupService:  userGroupService,
+		ChartService:      chartService,
+		TimeseriesService: timeseriesService,
 
 		SqlDB:  pg,
 		Tracer: otel.Tracer(serviceName),
@@ -245,59 +255,6 @@ func main() {
 	log.Infof("server started on port:%v", port)
 
 	r.Run(fmt.Sprintf(":%v", port))
-}
-
-// timespanProgressInterval is the number of nodes between progress log lines
-// while the timespan tree is built.
-const timespanProgressInterval = 500
-
-func NewNodeTimeSpanService(sqlRepo repository.SqlRepo, questRepo repository.QuestRepo) service.NodeTimeSpanServiceInterface {
-
-	kind := []string{"Folder", "Timeseries"}
-	nodes, err := sqlRepo.GetAllNodesByKind(context.Background(), kind)
-	if err != nil {
-		log.Errorf("Failed to query Folder and Timeseries  %s", err)
-		return nil
-	}
-
-	tsNodes := make([]model.NodeTimeSpan, 0, len(nodes))
-	start := time.Now()
-	queried, failed := 0, 0
-
-	log.Infof("NodeTimeSpanService: computing timespans for %d nodes", len(nodes))
-
-	for i, node := range nodes {
-		tsNode := model.NodeTimeSpan{ID: node.ID, ParentID: node.ParentID}
-		if node.Kind == model.Kind {
-			queried++
-			first, last, err := questRepo.QueryTimeRange(context.Background(), node.ID)
-			if err != nil {
-				failed++
-				log.Errorf("Failed to get first and last timestamps for node %d: %s", node.ID, err)
-			} else {
-				tsNode.LocalFirst = first
-				tsNode.LocalLast = last
-			}
-		}
-
-		tsNodes = append(tsNodes, tsNode)
-
-		if (i+1)%timespanProgressInterval == 0 {
-			log.Infof("timespan calculation progress: %d/%d nodes", i+1, len(nodes))
-		}
-	}
-
-	log.Infof("Timespans computed for %d series in %s (%d failed)",
-		queried, time.Since(start).Round(time.Millisecond), failed)
-
-	// Create a new NodeTimeSpanService
-	sv, err := service.InitializeTree(tsNodes)
-	if err != nil {
-		log.Errorf("Failed to initialize NodeTimeSpanService: %s", err)
-		return nil
-	}
-	sv.RecomputeAggregations()
-	return sv
 }
 
 func migrateQuestDB(qdb *pgx.Conn, migrationPath string) error {

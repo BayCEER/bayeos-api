@@ -13,15 +13,14 @@ import (
 )
 
 type Handler struct {
-	UserService         service.UserService
-	NodeService         service.NodeService
-	NodeTokenService    service.NodeTokenService
-	NodePrivService     service.NodePrivService
-	IDTokenService      service.IDTokenService
-	UserGroupService    service.UserGroupService
-	ChartService        service.ChartService
-	TimeseriesService   service.TimeseriesService
-	NodeTimeSpanService service.NodeTimeSpanServiceInterface
+	UserService       service.UserService
+	NodeService       service.NodeService
+	NodeTokenService  service.NodeTokenService
+	NodePrivService   service.NodePrivService
+	IDTokenService    service.IDTokenService
+	UserGroupService  service.UserGroupService
+	ChartService      service.ChartService
+	TimeseriesService service.TimeseriesService
 }
 
 type Config struct {
@@ -30,16 +29,15 @@ type Config struct {
 	// BasePath is the URL prefix (context) under which every handler is
 	// registered, e.g. "bayeos-api". Routes drop the legacy "/api" segment and
 	// are mounted as /<BasePath>/<route>.
-	BasePath            string
-	UserService         service.UserService
-	NodeService         service.NodeService
-	NodeTokenService    service.NodeTokenService
-	NodePrivService     service.NodePrivService
-	IDTokenService      service.IDTokenService
-	UserGroupService    service.UserGroupService
-	ChartService        service.ChartService
-	TimeseriesService   service.TimeseriesService
-	NodeTimeSpanService service.NodeTimeSpanServiceInterface
+	BasePath          string
+	UserService       service.UserService
+	NodeService       service.NodeService
+	NodeTokenService  service.NodeTokenService
+	NodePrivService   service.NodePrivService
+	IDTokenService    service.IDTokenService
+	UserGroupService  service.UserGroupService
+	ChartService      service.ChartService
+	TimeseriesService service.TimeseriesService
 
 	Tracer trace.Tracer
 
@@ -52,15 +50,14 @@ type Config struct {
 
 func NewMainHandler(c *Config) {
 	h := &Handler{
-		UserService:         c.UserService,
-		NodeService:         c.NodeService,
-		NodeTokenService:    c.NodeTokenService,
-		NodePrivService:     c.NodePrivService,
-		IDTokenService:      c.IDTokenService,
-		UserGroupService:    c.UserGroupService,
-		ChartService:        c.ChartService,
-		TimeseriesService:   c.TimeseriesService,
-		NodeTimeSpanService: c.NodeTimeSpanService,
+		UserService:       c.UserService,
+		NodeService:       c.NodeService,
+		NodeTokenService:  c.NodeTokenService,
+		NodePrivService:   c.NodePrivService,
+		IDTokenService:    c.IDTokenService,
+		UserGroupService:  c.UserGroupService,
+		ChartService:      c.ChartService,
+		TimeseriesService: c.TimeseriesService,
 	}
 
 	r := c.Router

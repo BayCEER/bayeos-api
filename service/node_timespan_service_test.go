@@ -22,6 +22,30 @@ func createTestNodes() []model.NodeTimeSpan {
 	}
 }
 
+// idxOfID returns the slice index of the node with the given id, or -1.
+// Structural assertions are expressed in terms of this rather than a fixed
+// position, because the internal slice is re-ordered breadth-first on every
+// structural change.
+func idxOfID(ts *NodeTimeSpanService, id int32) int {
+	idx, ok := ts.indexMap[id]
+	if !ok {
+		return -1
+	}
+	return idx
+}
+
+// requireParentBeforeChild asserts the invariant the aggregation sweep and the
+// delete cascade rely on: a node always appears after its parent.
+func requireParentBeforeChild(t *testing.T, ts *NodeTimeSpanService) {
+	t.Helper()
+	for i, n := range ts.nodes {
+		if n.ParentIdx < 0 {
+			continue
+		}
+		assert.Less(t, int(n.ParentIdx), i, "parent of node %d must be ordered before it", n.ID)
+	}
+}
+
 // Helper function to create nodes with times
 func createTestNodesWithTimes() []model.NodeTimeSpan {
 	baseTime := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -85,34 +109,35 @@ func TestInitializeTree(t *testing.T) {
 	})
 }
 
-func TestRecomputeAggregations(t *testing.T) {
-		t.Run("Basic aggregation", func(t *testing.T) {
-			nodes := createTestNodesWithTimes()
-			service, err := InitializeTree(nodes)
-			require.NoError(t, err)
+// TestAggregationOnInitialize covers the bottom-up sweep, which used to be a
+// public step callers had to remember. It now runs inside InitializeTree, so
+// the assertions below hold with no follow-up call.
+func TestAggregationOnInitialize(t *testing.T) {
+	t.Run("Basic aggregation", func(t *testing.T) {
+		nodes := createTestNodesWithTimes()
+		service, err := InitializeTree(nodes)
+		require.NoError(t, err)
 
-			service.RecomputeAggregations()
+		// Check leaf nodes - should have same local and aggregated times
+		assert.Equal(t, nodes[3].LocalFirst, service.nodes[3].AggFirst)
+		assert.Equal(t, nodes[3].LocalLast, service.nodes[3].AggLast)
 
-			// Check leaf nodes - should have same local and aggregated times
-			assert.Equal(t, nodes[3].LocalFirst, service.nodes[3].AggFirst)
-			assert.Equal(t, nodes[3].LocalLast, service.nodes[3].AggLast)
+		// Check intermediate node (node 2) - should aggregate children (nodes 4,5)
+		child5 := service.nodes[4]
+		node2 := service.nodes[1]
+		// Node 2's AggFirst should be min of its local first and children's aggregated firsts
+		// Since children are processed first, their aggregated values are used
+		// Node 2's local first is 01:00, child4's first is 03:00, so node2 keeps its own 01:00
+		assert.Equal(t, nodes[1].LocalFirst, node2.AggFirst) // Node 2's local first is earliest
+		assert.Equal(t, child5.LocalLast, node2.AggLast)     // Max of node2's local last and children's lasts
 
-			// Check intermediate node (node 2) - should aggregate children (nodes 4,5)
-			child5 := service.nodes[4]
-			node2 := service.nodes[1]
-			// Node 2's AggFirst should be min of its local first and children's aggregated firsts
-			// Since children are processed first, their aggregated values are used
-			// Node 2's local first is 01:00, child4's first is 03:00, so node2 keeps its own 01:00
-			assert.Equal(t, nodes[1].LocalFirst, node2.AggFirst) // Node 2's local first is earliest
-			assert.Equal(t, child5.LocalLast, node2.AggLast)   // Max of node2's local last and children's lasts
-
-			// Check root node - should aggregate all
-			root := service.nodes[0]
-			// Root's AggFirst should be min of its local first and all children's aggregated firsts
-			// Root's AggLast should be max of its local last and all children's aggregated lasts
-			assert.Equal(t, nodes[0].LocalFirst, root.AggFirst) // Root's local first is earliest
-			assert.Equal(t, nodes[5].LocalLast, root.AggLast)   // Node 6's last is latest
-		})
+		// Check root node - should aggregate all
+		root := service.nodes[0]
+		// Root's AggFirst should be min of its local first and all children's aggregated firsts
+		// Root's AggLast should be max of its local last and all children's aggregated lasts
+		assert.Equal(t, nodes[0].LocalFirst, root.AggFirst) // Root's local first is earliest
+		assert.Equal(t, nodes[5].LocalLast, root.AggLast)   // Node 6's last is latest
+	})
 
 	t.Run("Aggregation with zero times", func(t *testing.T) {
 		baseTime := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -123,8 +148,6 @@ func TestRecomputeAggregations(t *testing.T) {
 		}
 		service, err := InitializeTree(nodes)
 		require.NoError(t, err)
-
-		service.RecomputeAggregations()
 
 		// Node 2 has zero times, should be ignored in aggregation
 		root := service.nodes[0]
@@ -138,12 +161,10 @@ func TestRecomputeAggregations(t *testing.T) {
 			{ID: 1, ParentID: 0},
 			{ID: 2, ParentID: 1, LocalFirst: baseTime, LocalLast: baseTime.Add(1 * time.Hour)},
 			{ID: 3, ParentID: 1, LocalFirst: baseTime.Add(2 * time.Hour)}, // Only first time set
-			{ID: 4, ParentID: 1, LocalLast: baseTime.Add(3 * time.Hour)},     // Only last time set
+			{ID: 4, ParentID: 1, LocalLast: baseTime.Add(3 * time.Hour)},  // Only last time set
 		}
 		service, err := InitializeTree(nodes)
 		require.NoError(t, err)
-
-		service.RecomputeAggregations()
 
 		root := service.nodes[0]
 		assert.Equal(t, nodes[1].LocalFirst, root.AggFirst) // Min first from node 2
@@ -230,7 +251,10 @@ func TestAddNode(t *testing.T) {
 		service.AddNode(7, 2) // Add child to node 2
 
 		assert.Equal(t, originalLength+1, len(service.nodes))
-		assert.Equal(t, int32(1), service.nodes[originalLength].ParentIdx) // Parent should be node 2 (index 1)
+		// The new node is re-ordered next to its parent's subtree, not appended
+		// to the tail, so the relationship is asserted by id.
+		assert.Equal(t, int32(idxOfID(service, 2)), service.nodes[idxOfID(service, 7)].ParentIdx)
+		requireParentBeforeChild(t, service)
 	})
 
 	t.Run("Add child node with non-existent parent", func(t *testing.T) {
@@ -242,7 +266,8 @@ func TestAddNode(t *testing.T) {
 		service.AddNode(7, 99) // Add child with non-existent parent
 
 		assert.Equal(t, originalLength+1, len(service.nodes))
-		assert.Equal(t, int32(-1), service.nodes[originalLength].ParentIdx) // Should be orphaned
+		assert.Equal(t, int32(-1), service.nodes[idxOfID(service, 7)].ParentIdx) // Should be orphaned
+		requireParentBeforeChild(t, service)
 	})
 
 	t.Run("Add duplicate node", func(t *testing.T) {
@@ -274,9 +299,9 @@ func TestAddNodes(t *testing.T) {
 		service.AddNodes(newNodes)
 
 		assert.Equal(t, 4, len(service.nodes))
-		assert.Equal(t, int32(0), service.nodes[1].ParentIdx)  // Node 2's parent is root
-		assert.Equal(t, int32(0), service.nodes[2].ParentIdx)  // Node 3's parent is root
-		assert.Equal(t, int32(1), service.nodes[3].ParentIdx)  // Node 4's parent is node 2
+		assert.Equal(t, int32(0), service.nodes[1].ParentIdx) // Node 2's parent is root
+		assert.Equal(t, int32(0), service.nodes[2].ParentIdx) // Node 3's parent is root
+		assert.Equal(t, int32(1), service.nodes[3].ParentIdx) // Node 4's parent is node 2
 	})
 
 	t.Run("Add mixed existing and new nodes", func(t *testing.T) {
@@ -294,9 +319,10 @@ func TestAddNodes(t *testing.T) {
 
 		service.AddNodes(newNodes)
 
-		assert.Equal(t, originalLength+2, len(service.nodes)) // Only 2 new nodes added
-		assert.Equal(t, int32(0), service.nodes[originalLength].ParentIdx)  // Node 7's parent is root
-		assert.Equal(t, int32(1), service.nodes[originalLength+1].ParentIdx) // Node 8's parent is node 2
+		assert.Equal(t, originalLength+2, len(service.nodes))                                     // Only 2 new nodes added
+		assert.Equal(t, int32(idxOfID(service, 1)), service.nodes[idxOfID(service, 7)].ParentIdx) // Node 7's parent is root
+		assert.Equal(t, int32(idxOfID(service, 2)), service.nodes[idxOfID(service, 8)].ParentIdx) // Node 8's parent is node 2
+		requireParentBeforeChild(t, service)
 	})
 
 	t.Run("Add nodes maintains parent-child relationships", func(t *testing.T) {
@@ -312,6 +338,61 @@ func TestAddNodes(t *testing.T) {
 
 		// Verify the relationship is maintained
 		assert.Equal(t, int32(1), service.nodes[2].ParentIdx) // Node 3's parent is node 2 (index 1)
+	})
+}
+
+func TestOrphanedNodesAreRetained(t *testing.T) {
+	// A node whose parent is absent from the slice happens whenever the tree
+	// is loaded with a kind filter and a third kind is later introduced as a
+	// parent. Such a node must survive a rebuild rather than be dropped, and
+	// must keep aggregating locally while no longer rolling up.
+	base := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	t.Run("AddNodes retains nodes with an absent parent", func(t *testing.T) {
+		nodes := []model.NodeTimeSpan{
+			{ID: 1, ParentID: 0, LocalFirst: base, LocalLast: base.Add(time.Hour)},
+		}
+		service, err := InitializeTree(nodes)
+		require.NoError(t, err)
+
+		// Node 7's parent 99 is not part of the slice.
+		service.AddNodes([]model.NodeTimeSpan{
+			{ID: 7, ParentID: 99, LocalFirst: base.Add(2 * time.Hour), LocalLast: base.Add(3 * time.Hour)},
+		})
+
+		require.Equal(t, 2, len(service.nodes), "orphaned node must not be dropped")
+		first, last, ok := service.GetTimeSpan(7)
+		require.True(t, ok)
+		assert.Equal(t, base.Add(2*time.Hour), first.UTC())
+		assert.Equal(t, base.Add(3*time.Hour), last.UTC())
+
+		// It must not have polluted the root's aggregate.
+		first, last, _ = service.GetTimeSpan(1)
+		assert.Equal(t, base, first.UTC())
+		assert.Equal(t, base.Add(time.Hour), last.UTC())
+	})
+
+	t.Run("MoveNode to an absent parent retains the subtree", func(t *testing.T) {
+		nodes := createTestNodesWithTimes()
+		service, err := InitializeTree(nodes)
+		require.NoError(t, err)
+
+		// Detach node 2 (which owns 4 and 5) under a parent that is not loaded.
+		service.MoveNode(2, 99)
+
+		assert.Equal(t, 6, len(service.nodes))
+		assert.Equal(t, int32(-1), service.nodes[idxOfID(service, 2)].ParentIdx)
+
+		// The detached subtree still aggregates into itself...
+		first, last, _ := service.GetTimeSpan(2)
+		assert.Equal(t, base.Add(1*time.Hour), first.UTC())
+		assert.Equal(t, base.Add(5*time.Hour), last.UTC())
+
+		// ...but no longer into the root, which now sees only its own local
+		// data plus node 3's branch.
+		first, last, _ = service.GetTimeSpan(1)
+		assert.Equal(t, base, first.UTC())
+		assert.Equal(t, base.Add(6*time.Hour), last.UTC())
 	})
 }
 
@@ -435,7 +516,7 @@ func TestDeleteNode(t *testing.T) {
 		service.DeleteNode(3)
 
 		// Verify remaining nodes are still correctly structured
-		assert.Equal(t, 4, len(service.nodes)) // Nodes 1, 2, 4, 5 should remain
+		assert.Equal(t, 4, len(service.nodes))                 // Nodes 1, 2, 4, 5 should remain
 		assert.Equal(t, int32(-1), service.nodes[0].ParentIdx) // Root
 		assert.Equal(t, int32(0), service.nodes[1].ParentIdx)  // Node 2's parent is root
 		assert.Equal(t, int32(1), service.nodes[2].ParentIdx)  // Node 4's parent is node 2
@@ -448,8 +529,6 @@ func TestGetTimeSpan(t *testing.T) {
 		nodes := createTestNodesWithTimes()
 		service, err := InitializeTree(nodes)
 		require.NoError(t, err)
-
-		service.RecomputeAggregations()
 
 		first, last, exists := service.GetTimeSpan(2)
 		require.True(t, exists)
@@ -473,8 +552,6 @@ func TestGetTimeSpan(t *testing.T) {
 		service, err := InitializeTree(nodes)
 		require.NoError(t, err)
 
-		service.RecomputeAggregations()
-
 		// Get root timespan - should be aggregated from all nodes
 		first, last, exists := service.GetTimeSpan(1)
 		require.True(t, exists)
@@ -489,8 +566,6 @@ func TestGetTimeSpan(t *testing.T) {
 		}
 		service, err := InitializeTree(nodes)
 		require.NoError(t, err)
-
-		service.RecomputeAggregations()
 
 		first, last, exists := service.GetTimeSpan(2)
 		require.True(t, exists)
@@ -531,8 +606,8 @@ func TestConcurrentOperations(t *testing.T) {
 						// AddNode (will be ignored if duplicate)
 						service.AddNode(int32(i%len(nodes)+1), 1)
 					case 3:
-						// RecomputeAggregations
-						service.RecomputeAggregations()
+						// DeleteNodes (batch cascade, internally re-aggregating)
+						service.DeleteNodes([]int32{int32(i%len(nodes) + 1)})
 					}
 				}
 			}()
@@ -540,7 +615,6 @@ func TestConcurrentOperations(t *testing.T) {
 		wg.Wait()
 
 		// Verify the service is still in a consistent state
-		service.RecomputeAggregations()
 		for _, node := range service.nodes {
 			if !node.LocalFirst.IsZero() && !node.LocalLast.IsZero() {
 				assert.True(t, node.LocalFirst.Before(node.LocalLast) || node.LocalFirst.Equal(node.LocalLast))
@@ -548,35 +622,35 @@ func TestConcurrentOperations(t *testing.T) {
 		}
 	})
 
-		t.Run("Concurrent AddNode operations", func(t *testing.T) {
-			nodes := []model.NodeTimeSpan{
-				{ID: 1, ParentID: 0},
-			}
-			service, err := InitializeTree(nodes)
-			require.NoError(t, err)
+	t.Run("Concurrent AddNode operations", func(t *testing.T) {
+		nodes := []model.NodeTimeSpan{
+			{ID: 1, ParentID: 0},
+		}
+		service, err := InitializeTree(nodes)
+		require.NoError(t, err)
 
-			var wg sync.WaitGroup
-			const goroutines = 5
-			const nodesPerGoroutine = 20
+		var wg sync.WaitGroup
+		const goroutines = 5
+		const nodesPerGoroutine = 20
 
-			for g := 0; g < goroutines; g++ {
-				wg.Add(1)
-				go func(baseID int) {
-					defer wg.Done()
-					for i := 0; i < nodesPerGoroutine; i++ {
-						nodeID := int32(baseID + i)
-						parentID := int32(1) // All nodes will be children of root
-						service.AddNode(nodeID, parentID)
-					}
-				}(g * nodesPerGoroutine)
-			}
-			wg.Wait()
+		for g := 0; g < goroutines; g++ {
+			wg.Add(1)
+			go func(baseID int) {
+				defer wg.Done()
+				for i := 0; i < nodesPerGoroutine; i++ {
+					nodeID := int32(baseID + i)
+					parentID := int32(1) // All nodes will be children of root
+					service.AddNode(nodeID, parentID)
+				}
+			}(g * nodesPerGoroutine)
+		}
+		wg.Wait()
 
-			// Due to potential race conditions in concurrent AddNode, we can't guarantee exact count
-			// But we should have at least the original node and some new nodes
-			assert.True(t, len(service.nodes) >= 1, "Should have at least the original node")
+		// Due to potential race conditions in concurrent AddNode, we can't guarantee exact count
+		// But we should have at least the original node and some new nodes
+		assert.True(t, len(service.nodes) >= 1, "Should have at least the original node")
 
-			// Verify root node has correct parent index
-			assert.Equal(t, int32(-1), service.nodes[0].ParentIdx) // Root should have ParentIdx = -1
-		})
+		// Verify root node has correct parent index
+		assert.Equal(t, int32(-1), service.nodes[0].ParentIdx) // Root should have ParentIdx = -1
+	})
 }

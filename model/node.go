@@ -10,6 +10,9 @@ import (
 const ROOT_ID = 1
 const HOME_ID = 2
 
+const KindFolder = "Folder"
+const KindTimeseries = "Timeseries"
+
 type Node struct {
 	ID          int32     `db:"id" json:"id"`
 	DisplayName string    `db:"display_name" json:"display_name"`
@@ -62,22 +65,4 @@ func NewNodePrivilege(nodeID int32, grantorID int32, granteeID int32) NodePrivil
 func NewNodeToken(nodeID int32) NodeToken {
 	uu, _ := uuid.NewRandom()
 	return NodeToken{NodeID: nodeID, Token: uu}
-}
-
-type NodeMetaDecorator func(node *Node)
-
-func FirstLastDecorator(first, last time.Time) NodeMetaDecorator {
-	return func(node *Node) {
-		if node == nil {
-			return
-		}
-		md := node.Metadata.Map()
-		md["first"] = first
-		md["last"] = last
-		merged, err := MetadataFromMap(md)
-		if err != nil {
-			return
-		}
-		node.Metadata = merged
-	}
 }
