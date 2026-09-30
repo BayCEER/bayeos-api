@@ -21,10 +21,8 @@ import (
 // interval bounds how long it lasts. A failed refresh keeps the previous tree,
 // so a shorter interval also means a transient database problem clears sooner.
 //
-// The cost is one node query per minute per tree. Raise this if the node table
-// grows large enough for that to matter, and put the recovery burden on a
-// restart instead.
-const refreshInterval = time.Minute
+
+const refreshInterval = 60 * time.Minute
 
 // timeSpanKinds are the node kinds loaded into the time span tree. Every kind
 // that can appear in the tree must be listed, otherwise a node whose kind is
