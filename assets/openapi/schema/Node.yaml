@@ -41,12 +41,35 @@ properties:
         type: string
         format: date-time
         readOnly: true
-        description: First data point timestamp of the timeseries, maintained by the API (ISO-8601 UTC, microsecond precision)
+        description: First data point timestamp of the timeseries, rolled up from this node and its descendants by the API (ISO-8601 UTC, microsecond precision). Read-only; dropped from any write
       last:
         type: string
         format: date-time
         readOnly: true
-        description: Last data point timestamp of the timeseries, maintained by the API (ISO-8601 UTC, microsecond precision)
+        description: Last data point timestamp of the timeseries, rolled up from this node and its descendants by the API (ISO-8601 UTC, microsecond precision). Read-only; dropped from any write
+      _inherited:
+        type: array
+        readOnly: true
+        items:
+          type: string
+        description: >
+          Names of the properties above that were copied in from an ancestor on
+          this read. A property this node already defines is left out, because
+          the value returned is the node's own. Computed on every read and never
+          stored, so a request that sends this key is rejected with 400. To
+          override an inherited value locally, send the property without this
+          key.
+      _aggregated:
+        type: array
+        readOnly: true
+        items:
+          type: string
+        description: >
+          Names of the properties above that the API computed by rolling this
+          node's own data together with that of its descendants, currently
+          first and last. Computed on every read and never stored, so a request
+          that sends this key is rejected with 400, and first and last are
+          dropped from any metadata write even when no marker names them.
     additionalProperties: true
   created_at:
     readOnly: true

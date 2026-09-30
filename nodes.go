@@ -12,18 +12,38 @@ import (
 	"github.com/BayCEER/bayeos/bayeos-api/service"
 )
 
+// refreshInterval is how often the trees are rebuilt in the background, so
+// mutations that bypass the decorated service are picked up.
+//
+// The trees are keyed by node id, so a tree built before the database was
+// restored or recreated maps an id onto the wrong ancestry and silently resolves
+// no inherited values. Nothing on the read path can detect that, so the
+// interval bounds how long it lasts. A failed refresh keeps the previous tree,
+// so a shorter interval also means a transient database problem clears sooner.
+//
+// The cost is one node query per minute per tree. Raise this if the node table
+// grows large enough for that to matter, and put the recovery burden on a
+// restart instead.
+const refreshInterval = time.Minute
+
 // timeSpanKinds are the node kinds loaded into the time span tree. Every kind
 // that can appear in the tree must be listed, otherwise a node whose kind is
 // missing becomes an orphan and its data stops rolling up into its ancestors.
 var timeSpanKinds = []string{model.KindFolder, model.KindTimeseries}
 
-// timeSpanProgressInterval is the number of nodes between progress log lines
-// while the time span tree is built.
-const timeSpanProgressInterval = 500
+// propertyKinds are the node kinds loaded into the property tree. Inheritance
+// needs the whole chain, so every kind that can appear must be listed: omitting
+// one would sever the parent link above it and silently stop inheritance.
+var propertyKinds = []string{model.KindFolder, model.KindTimeseries}
 
-// timeSpanRefreshInterval is how often the time span tree is rebuilt in the
-// background, so mutations that bypass the decorated service are picked up.
-const timeSpanRefreshInterval = 5 * time.Minute
+// propertyRules declare which metadata properties are inherited from which
+// source kind. A Folder carrying a unit passes it to every descendant that does
+// not define one itself, so a whole subtree of series can share a single unit.
+var propertyRules = []service.PropertyRule{
+	{SourceKind: model.KindFolder, Property: "unit"},
+	{SourceKind: model.KindFolder, Property: "location"},
+	{SourceKind: model.KindFolder, Property: "resolution"},
+}
 
 // decorateNodes is the single place where cross-cutting node behaviour is
 // declared. It is a static slice, evaluated once at start-up: there is no
@@ -33,22 +53,22 @@ const timeSpanRefreshInterval = 5 * time.Minute
 // Ordering is fixed by the package documentation of the decorator package:
 // Wrap is applied outside-in in declaration order, and enrich runs after the
 // wrapped call returns in declaration order.
-func decorateNodes(base service.NodeService, span service.NodeTimeSpanServiceInterface, loader func(context.Context) ([]model.NodeTimeSpan, error)) service.NodeService {
+func decorateNodes(base service.NodeService, span service.NodeTimeSpanServiceInterface, spanLoader func(context.Context) ([]model.NodeTimeSpan, error), props service.NodePropertyServiceInterface, propLoader func(context.Context) ([]model.Node, error)) service.NodeService {
 	chain := []decorator.Decorator{
-		// decorator.Log(decorator.LogConfig{
-		// 	Level: zerolog.DebugLevel,
-		// 	// Reading the ancestors of a deeply nested node on every browse
-		// 	// is noisy and rarely interesting.
-		// 	Skip: func(op string) bool { return op == decorator.OpGetNodeParents },
-		// }),
-
 		decorator.TimeSpan(decorator.TimeSpanConfig{
 			Span:          span,
-			Loader:        loader,
+			Loader:        spanLoader,
 			Kinds:         timeSpanKinds,
 			OmitWhenEmpty: true,
 			SyncWrites:    true,
-			RefreshEvery:  timeSpanRefreshInterval,
+			RefreshEvery:  refreshInterval,
+		}),
+		decorator.InheritedProps(decorator.InheritedConfig{
+			Props:        props,
+			Rules:        propertyRules,
+			Loader:       propLoader,
+			SyncWrites:   true,
+			RefreshEvery: refreshInterval,
 		}),
 	}
 
@@ -75,8 +95,35 @@ func newNodeTimeSpanService(sqlRepo repository.SqlRepo, questRepo repository.Que
 	if err != nil {
 		return nil, fmt.Errorf("initialize time span tree: %w", err)
 	}
-	log.Debugf("tree built for %d nodes in %s", len(tsNodes), time.Since(start).Round(time.Millisecond))
+	log.Infof("tree built for %d nodes in %s", len(tsNodes), time.Since(start).Round(time.Millisecond))
 	return ts, nil
+}
+
+// propertyLoader returns the reload function handed to the InheritedProps
+// decorator, and is also the initial load path. Inheritance needs each node's
+// own metadata, so the query selects it alongside the parent link.
+func propertyLoader(sqlRepo repository.SqlRepo) func(context.Context) ([]model.Node, error) {
+	return func(ctx context.Context) ([]model.Node, error) {
+		return sqlRepo.GetAllNodesByKind(ctx, propertyKinds)
+	}
+}
+
+// newNodePropertyService builds the initial property tree. It shares the loader
+// with the periodic refresh so the first load and every later reload run the
+// same code path.
+func newNodePropertyService(sqlRepo repository.SqlRepo) (service.NodePropertyServiceInterface, error) {
+	start := time.Now()
+	nodes, err := propertyLoader(sqlRepo)(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("load node properties: %w", err)
+	}
+
+	props, err := service.InitializePropertyTree(nodes, propertyRules)
+	if err != nil {
+		return nil, fmt.Errorf("initialize property tree: %w", err)
+	}
+	log.Infof("property tree built for %d nodes in %s", len(nodes), time.Since(start).Round(time.Millisecond))
+	return props, nil
 }
 
 // timeSpanLoader returns the reload function handed to the TimeSpan decorator,
@@ -100,7 +147,7 @@ func timeSpanLoader(sqlRepo repository.SqlRepo, questRepo repository.QuestRepo) 
 
 		log.Infof("timespan load: querying %d nodes", len(nodes))
 
-		for i, node := range nodes {
+		for _, node := range nodes {
 			tsNode := model.NodeTimeSpan{ID: node.ID, ParentID: node.ParentID}
 			if node.Kind == model.Kind {
 				queried++
@@ -114,10 +161,6 @@ func timeSpanLoader(sqlRepo repository.SqlRepo, questRepo repository.QuestRepo) 
 				}
 			}
 			tsNodes = append(tsNodes, tsNode)
-
-			if (i+1)%timeSpanProgressInterval == 0 {
-				log.Debugf("timespan load progress: %d/%d nodes", i+1, len(nodes))
-			}
 		}
 
 		log.Infof("timespan load: queried %d series in %s (%d failed)", queried, time.Since(start).Round(time.Millisecond), failed)

@@ -108,7 +108,7 @@ func (r *SqlRepo) CreateNode(ctx context.Context, n *model.Node) error {
 	stmt := `INSERT INTO node (display_name,kind,parent_id,metadata) VALUES ($1,$2,$3,coalesce($4::jsonb,'{}')) RETURNING id,display_name,kind,coalesce(parent_id,0) as parent_id, (path).path as node_path, created_at, coalesce(metadata, '{}') as metadata`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, n, stmt,
-		n.DisplayName, n.Kind, n.ParentID, n.Metadata)
+		n.DisplayName, n.Kind, n.ParentID, model.StripComputed(n.Metadata))
 	endQuerySpan(span, err)
 	return err
 }
@@ -117,7 +117,7 @@ func (r *SqlRepo) UpdateNode(ctx context.Context, n *model.Node) error {
 	stmt := `UPDATE node set display_name=$1,kind=$2, parent_id=$3, metadata=coalesce($4::jsonb,'{}') where id=$5 RETURNING id,display_name,kind,coalesce(parent_id,0) as parent_id, (path).path as node_path, coalesce(metadata, '{}') as metadata`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, n, stmt,
-		n.DisplayName, n.Kind, n.ParentID, n.Metadata, n.ID)
+		n.DisplayName, n.Kind, n.ParentID, model.StripComputed(n.Metadata), n.ID)
 	endQuerySpan(span, err)
 	return err
 }
@@ -161,10 +161,14 @@ func (r *SqlRepo) UpdateNodeFieldByID(ctx context.Context, ID int32, name string
 	return err
 }
 
+// MergeNodeMetadata merges metadata into the stored document. Only local values
+// are applied: every computed marker and every key it names are dropped, along
+// with the time span keys, so echoing a decorated node back cannot turn derived
+// values into stored ones.
 func (r *SqlRepo) MergeNodeMetadata(ctx context.Context, ID int32, metadata model.Metadata) error {
 	stmt := `UPDATE node SET metadata = metadata || $1::jsonb WHERE id = $2`
 	c, span := withQuerySpan(ctx, stmt)
-	_, err := r.trans.ExecContext(c, stmt, metadata, ID)
+	_, err := r.trans.ExecContext(c, stmt, model.StripComputed(metadata), ID)
 	endQuerySpan(span, err)
 	return err
 }
@@ -263,7 +267,7 @@ func (r *SqlRepo) GetNodePermission(ctx context.Context, nodeID int32, userID in
 
 func (r *SqlRepo) GetAllNodesByKind(ctx context.Context, kinds []string) ([]model.Node, error) {
 	nodes := []model.Node{}
-	stmt := `select id, coalesce(parent_id,0) as parent_id, kind as kind from node where kind = ANY($1::text[]) order by array_length((path).ids,1),id`
+	stmt := `select id, coalesce(parent_id,0) as parent_id, kind as kind, coalesce(metadata, '{}') as metadata from node where kind = ANY($1::text[]) order by array_length((path).ids,1),id`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.SelectContext(c, &nodes, stmt, kinds)
 	endQuerySpan(span, err)

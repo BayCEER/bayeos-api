@@ -224,10 +224,17 @@ func main() {
 		log.Fatalf("failed to build the node time span service: %v", err)
 	}
 
+	nodePropertyService, err := newNodePropertyService(sqlRepo)
+	if err != nil {
+		log.Fatalf("failed to build the node property service: %v", err)
+	}
+
 	nodeService := decorateNodes(
 		service.NewNodeService(sqlRepo),
 		nodeTimeSpanService,
 		timeSpanLoader(sqlRepo, questRepo),
+		nodePropertyService,
+		propertyLoader(sqlRepo),
 	)
 
 	timeseriesService := service.NewTimeseriesService(nodeService, nodePrivService, questRepo)

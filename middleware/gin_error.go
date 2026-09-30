@@ -15,8 +15,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/BayCEER/bayeos/bayeos-api/repository"
 	log "github.com/BayCEER/bayeos/bayeos-api/logger"
+	"github.com/BayCEER/bayeos/bayeos-api/model"
+	"github.com/BayCEER/bayeos/bayeos-api/repository"
 )
 
 // APIError is a machine-readable error matching the ErrorResponse schema.
@@ -80,6 +81,23 @@ func AbortWithNotFoundIfNoRows(c *gin.Context, err error, resource, field, value
 func AbortWithBadRequestIfReadOnlyField(c *gin.Context, err error) bool {
 	if errors.Is(err, repository.ErrReadOnlyField) {
 		AbortWithBadRequestError(c, "Invalid request body: read-only field provided")
+		return true
+	}
+	return false
+}
+
+// AbortWithBadRequestIfComputedNotWritable aborts with a 400 and returns true if
+// err wraps either computed-marker error. The message names the marker so a
+// client that echoed a node read back knows which key to drop.
+func AbortWithBadRequestIfComputedNotWritable(c *gin.Context, err error) bool {
+	switch {
+	case errors.Is(err, repository.ErrInheritedNotWritable):
+		AbortWithBadRequestError(c, "Invalid request body: '"+model.InheritedKey+
+			"' is computed from ancestors and cannot be written; remove it and retry")
+		return true
+	case errors.Is(err, repository.ErrAggregatedNotWritable):
+		AbortWithBadRequestError(c, "Invalid request body: '"+model.AggregatedKey+
+			"' is aggregated from this node and its descendants and cannot be written; remove it and retry")
 		return true
 	}
 	return false

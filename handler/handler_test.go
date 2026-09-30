@@ -13,6 +13,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/BayCEER/bayeos/bayeos-api/decorator"
 	"github.com/BayCEER/bayeos/bayeos-api/ldap"
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 
@@ -96,7 +97,7 @@ func setup() {
 		Router:           router,
 		BasePath:         "bayeos-api",
 		UserService:      service.NewUserService(sqlRepo, &LDAPMock{}),
-		NodeService:      service.NewNodeService(sqlRepo),
+		NodeService:      newTestNodeService(),
 		NodeTokenService: service.NewNodeTokenService(sqlRepo),
 		NodePrivService:  service.NewNodePrivService(sqlRepo),
 		UserGroupService: service.NewUserGroupService(sqlRepo),
@@ -104,6 +105,38 @@ func setup() {
 	})
 	log.Println("test up")
 
+}
+
+// newTestNodeService builds the node service the way main does, with the
+// decorators applied. The test binary cannot import package main, so the chain
+// is assembled here; it must stay in step with decorateNodes in nodes.go.
+func newTestNodeService() service.NodeService {
+	base := service.NewNodeService(sqlRepo)
+
+	nodes, err := sqlRepo.GetAllNodesByKind(context.Background(), []string{model.KindFolder, model.KindTimeseries})
+	if err != nil {
+		log.Fatalf("failed to load test node properties: %v", err)
+	}
+	props, err := service.InitializePropertyTree(nodes, testPropertyRules)
+	if err != nil {
+		log.Fatalf("failed to build test property tree: %v", err)
+	}
+
+	return decorator.Chain(base, decorator.InheritedProps(decorator.InheritedConfig{
+		Props:      props,
+		Rules:      testPropertyRules,
+		SyncWrites: true,
+	}))
+}
+
+// testPropertyRules mirrors propertyRules in nodes.go. The time span decorator
+// is omitted because it needs a QuestDB connection, which the handler tests do
+// not provide.
+var testPropertyRules = []service.PropertyRule{
+	{SourceKind: model.KindFolder, Property: "unit"},
+	{SourceKind: model.KindFolder, Property: "lat"},
+	{SourceKind: model.KindFolder, Property: "lon"},
+	{SourceKind: model.KindFolder, Property: "resolution"},
 }
 
 func shutdown() {

@@ -77,6 +77,9 @@ func (h *Handler) UpdateTimeseries(c *gin.Context) {
 			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
 			return
 		}
+		if mw.AbortWithBadRequestIfComputedNotWritable(c, err) {
+			return
+		}
 		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to update timeseries: %v", err))
 		return
 	}

@@ -99,6 +99,19 @@ func rowsAffected(res sql.Result, err error) error {
 // is derived or system-managed (e.g. id, created_at, node_path).
 var ErrReadOnlyField = errors.New("column is read-only")
 
+// ErrInheritedNotWritable is returned when a request tries to write the
+// _inherited metadata marker. The marker names keys an ancestor supplied, so
+// accepting it would let a read-modify-write turn derived values into local
+// ones, which would silently freeze inheritance for that node.
+var ErrInheritedNotWritable = errors.New("inherited properties are read-only")
+
+// ErrAggregatedNotWritable is returned when a request tries to write the
+// _aggregated metadata marker. It is the span counterpart of
+// ErrInheritedNotWritable: the marker names keys rolled up from a subtree, so
+// accepting an echoed body would pin a snapshot of the subtree's time span
+// onto the node and stop it tracking further measurements.
+var ErrAggregatedNotWritable = errors.New("aggregated properties are read-only")
+
 func (r *SqlRepo) CheckFieldName(i any, colname string) error {
 	col := strings.ToLower(colname)
 	if col == "id" || col == "created_at" || col == "node_path" {

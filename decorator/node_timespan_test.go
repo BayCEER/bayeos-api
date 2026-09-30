@@ -105,6 +105,55 @@ func TestTimeSpanEnrich(t *testing.T) {
 		assert.Equal(t, "", md[DefaultLastKey])
 	})
 
+	t.Run("names the keys it wrote in the aggregated marker", func(t *testing.T) {
+		d := TimeSpan(TimeSpanConfig{Span: newTestSpan(t)})
+
+		md := mdOf(enrichVia(t, d, newNode(3, "Timeseries", nil)))
+
+		assert.Equal(t, []any{"first", "last"}, md[model.AggregatedKey])
+	})
+
+	t.Run("custom keys are named in the marker too", func(t *testing.T) {
+		d := TimeSpan(TimeSpanConfig{
+			Span:     newTestSpan(t),
+			FirstKey: "ts_from",
+			LastKey:  "ts_to",
+		})
+
+		md := mdOf(enrichVia(t, d, newNode(3, "Timeseries", nil)))
+
+		assert.Equal(t, []any{"ts_from", "ts_to"}, md[model.AggregatedKey],
+			"the repository strips by marker, so a custom name has to be listed")
+	})
+
+	t.Run("no span means no marker", func(t *testing.T) {
+		d := TimeSpan(TimeSpanConfig{Span: newTestSpan(t)})
+
+		md := mdOf(enrichVia(t, d, newNode(99, "Timeseries", map[string]any{"unit": "C"})))
+
+		assert.NotContains(t, md, model.AggregatedKey,
+			"a marker must not list keys that were not written")
+	})
+
+	t.Run("OmitWhenEmpty writes neither values nor marker", func(t *testing.T) {
+		d := TimeSpan(TimeSpanConfig{Span: newTestSpan(t), OmitWhenEmpty: true})
+
+		md := mdOf(enrichVia(t, d, newNode(5, "Folder", map[string]any{"unit": "C"})))
+
+		assert.NotContains(t, md, model.AggregatedKey)
+		assert.NotContains(t, md, DefaultFirstKey)
+	})
+
+	t.Run("a marker already present is added to, not replaced", func(t *testing.T) {
+		d := TimeSpan(TimeSpanConfig{Span: newTestSpan(t)})
+
+		md := mdOf(enrichVia(t, d, newNode(3, "Timeseries", map[string]any{
+			model.AggregatedKey: []any{"existing"},
+		})))
+
+		assert.Equal(t, []any{"existing", "first", "last"}, md[model.AggregatedKey])
+	})
+
 	t.Run("a node of an unlisted kind is not decorated", func(t *testing.T) {
 		d := TimeSpan(TimeSpanConfig{Span: newTestSpan(t), Kinds: []string{"Timeseries"}})
 
@@ -255,7 +304,7 @@ func TestTimeSpanConfig(t *testing.T) {
 		d := TimeSpan(TimeSpanConfig{Span: newTestSpan(t)})
 		assert.Equal(t, "timespan", d.Name)
 		assert.NotNil(t, d.Enrich)
-		assert.Nil(t, d.Wrap, "SyncWrites off means no wrapper")
+		assert.NotNil(t, d.Wrap, "the marker guard is installed even with SyncWrites off")
 	})
 
 	t.Run("installs a wrapper when SyncWrites is on", func(t *testing.T) {

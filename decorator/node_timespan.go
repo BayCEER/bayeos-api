@@ -11,10 +11,12 @@ import (
 	log "github.com/BayCEER/bayeos/bayeos-api/logger"
 )
 
-// Default metadata keys written by the TimeSpan decorator.
+// Default metadata keys written by the TimeSpan decorator. They are aliased from
+// model because the repository strips them from every metadata write and cannot
+// import this package.
 const (
-	DefaultFirstKey = "first"
-	DefaultLastKey  = "last"
+	DefaultFirstKey = model.DefaultFirstKey
+	DefaultLastKey  = model.DefaultLastKey
 )
 
 // TimeSpanConfig configures the TimeSpan decorator.
@@ -89,11 +91,15 @@ func TimeSpan(cfg TimeSpanConfig) Decorator {
 		Name:   "timespan",
 		When:   KindIs(cfg.Kinds...),
 		Enrich: timeSpanEnricher(cfg),
-	}
-	if cfg.SyncWrites {
-		d.Wrap = func(next service.NodeService) service.NodeService {
+		// The wrapper is installed whether or not writes are being synced.
+		// Refusing an echoed read is a contract with the client, not bookkeeping:
+		// leaving it tied to SyncWrites would silently start persisting markers
+		// and fabricated span values the moment write-sync was switched off.
+		// The methods it owns no-op on their span bookkeeping when SyncWrites is
+		// false, so the guard is the only behaviour that remains.
+		Wrap: func(next service.NodeService) service.NodeService {
 			return &timeSpanService{NodeService: next, cfg: cfg}
-		}
+		},
 	}
 	return d
 }
@@ -112,6 +118,13 @@ func timeSpanEnricher(cfg TimeSpanConfig) func(context.Context, *View) {
 		md := v.Metadata()
 		md[cfg.FirstKey] = formatTime(first)
 		md[cfg.LastKey] = formatTime(last)
+		// Register the two keys as computed. They are rolled up from this node
+		// and its descendants, so the marker tells a client they are not the
+		// node's own values, and names them so the repository can strip them
+		// from a write. Added rather than assigned: another decorator shares
+		// this metadata and must not have its marker discarded here.
+		model.AddMarkerKey(md, model.AggregatedKey, cfg.FirstKey)
+		model.AddMarkerKey(md, model.AggregatedKey, cfg.LastKey)
 	}
 }
 
@@ -132,8 +145,15 @@ type timeSpanService struct {
 }
 
 // CreateNode registers the new node in the span tree. A new node holds no
-// measurements yet, so the span service needs no re-aggregation here.
+// measurements yet, so the span service needs no re-aggregation here. A computed
+// marker in the body is still refused: this decorator is what produces them, so
+// it is the right place to catch an echoed read.
 func (s *timeSpanService) CreateNode(ctx context.Context, node *model.Node, userID int32) error {
+	if node != nil {
+		if err := rejectComputedMetadata(node.Metadata.Map()); err != nil {
+			return err
+		}
+	}
 	if err := s.NodeService.CreateNode(ctx, node, userID); err != nil {
 		return err
 	}
@@ -141,7 +161,9 @@ func (s *timeSpanService) CreateNode(ctx context.Context, node *model.Node, user
 		return nil
 	}
 
-	s.cfg.Span.AddNode(node.ID, node.ParentID)
+	if s.cfg.SyncWrites {
+		s.cfg.Span.AddNode(node.ID, node.ParentID)
+	}
 	return nil
 }
 
@@ -149,12 +171,20 @@ func (s *timeSpanService) CreateNode(ctx context.Context, node *model.Node, user
 // created along the path are not returned by the service, so their ids are
 // unknown. The next refresh picks them up.
 func (s *timeSpanService) CreateNodeByPath(ctx context.Context, node *model.Node, baseNodeID int32, path string, userID int32) error {
+	if node != nil {
+		if err := rejectComputedMetadata(node.Metadata.Map()); err != nil {
+			return err
+		}
+	}
 	return s.NodeService.CreateNodeByPath(ctx, node, baseNodeID, path, userID)
 }
 
 // UpdateNode treats a parent_id change as a move, which changes which ancestors
 // a node's data rolls up into.
 func (s *timeSpanService) UpdateNode(ctx context.Context, id int32, fields *map[string]any) error {
+	if err := rejectComputedFields(fields); err != nil {
+		return err
+	}
 	if err := s.NodeService.UpdateNode(ctx, id, fields); err != nil {
 		return err
 	}
@@ -173,12 +203,19 @@ func (s *timeSpanService) UpdateNode(ctx context.Context, id int32, fields *map[
 		return nil
 	}
 
-	s.cfg.Span.MoveNode(id, newParent)
+	if s.cfg.SyncWrites {
+		s.cfg.Span.MoveNode(id, newParent)
+	}
 	return nil
 }
 
 // UpdateNodeMetadata needs no span bookkeeping: metadata holds no measurements.
+// The computed-marker guard still applies, since this is the shortest path a
+// client has to write back a node it just read.
 func (s *timeSpanService) UpdateNodeMetadata(ctx context.Context, id int32, metadata map[string]any) error {
+	if err := rejectComputedMetadata(metadata); err != nil {
+		return err
+	}
 	return s.NodeService.UpdateNodeMetadata(ctx, id, metadata)
 }
 
@@ -191,7 +228,9 @@ func (s *timeSpanService) DeleteNodesByIDs(ctx context.Context, ids []int32) err
 		return err
 	}
 
-	s.cfg.Span.DeleteNodes(ids)
+	if s.cfg.SyncWrites {
+		s.cfg.Span.DeleteNodes(ids)
+	}
 	return nil
 }
 
@@ -201,7 +240,9 @@ func (s *timeSpanService) DeleteNode(ctx context.Context, id int32) error {
 		return err
 	}
 
-	s.cfg.Span.DeleteNode(id)
+	if s.cfg.SyncWrites {
+		s.cfg.Span.DeleteNode(id)
+	}
 	return nil
 }
 
