@@ -23,8 +23,8 @@ type InheritedConfig struct {
 	// Props is the in-memory property tree. Required.
 	Props service.NodePropertyServiceInterface
 
-	// Rules declare which properties are inherited from which source kind.
-	// Required; with no rules the decorator does nothing.
+	// Rules declare which node kinds supply inherited metadata. Required; with
+	// no rules the decorator does nothing.
 	Rules []service.PropertyRule
 
 	// Loader rebuilds the tree from scratch. It is required when RefreshEvery

@@ -301,8 +301,15 @@ If the new capability needed to see the request and its errors, it would set
 ### The InheritedProps decorator
 
 `InheritedProps` (`node_inherited.go`) is the second installed decorator. It
-inherits configured metadata properties down the node tree, so a unit set once
-on a folder applies to every series beneath it.
+inherits a node's metadata down the tree, so a unit set once on a folder applies
+to every series beneath it.
+
+**What a rule names.** A `service.PropertyRule` names a source *kind*, never a
+property: every key that kind of node holds is inherited. `propertyRules` in
+`nodes.go` is therefore a single `{SourceKind: model.KindFolder}` rule, and a
+property nobody anticipated on a folder still reaches its descendants. The
+trade-off is deliberate — the set of inheritable properties cannot be narrowed
+to a known list, and a folder's private bookkeeping keys are inherited too.
 
 **Where the values go.** Inherited properties are merged into `metadata`, not
 exposed as a separate field or a separate document. That keeps every existing
@@ -336,10 +343,12 @@ computed on more than one pass.
 
 **Resolution.** `NodePropertyService.Inherited`
 (`service/node_property_service.go`) walks the parent chain on every read and
-stops at the first value it finds per property, so the nearest ancestor wins. The
-tree holds only locally stored values, so a change to an ancestor takes effect on
-the next read with no rebuild, and a derived value can never drift into being
-local. A cycle guard stops a malformed tree from spinning.
+takes the nearest value it finds for each key, so the nearest ancestor wins for
+the keys it holds while the rest are still collected further up. The walk
+therefore always reaches the root, bounded by a cycle guard rather than by a
+"found enough" test. The tree holds only locally stored values, so a change to an
+ancestor takes effect on the next read with no rebuild, and a derived value can
+never drift into being local.
 
 **The write invariant.** `MergeNodeMetadata` (`repository/node_repo.go:170`) runs
 `metadata = metadata || $1::jsonb`, which is additive. Without a guard, a client

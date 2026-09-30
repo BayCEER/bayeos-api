@@ -44,7 +44,7 @@ func (s *stubProps) GetNodes() []model.Node                       { return nil }
 func inheritedChain(props service.NodePropertyServiceInterface, base service.NodeService) service.NodeService {
 	return Chain(base, InheritedProps(InheritedConfig{
 		Props:      props,
-		Rules:      []service.PropertyRule{{SourceKind: model.KindFolder, Property: "unit"}},
+		Rules:      []service.PropertyRule{{SourceKind: model.KindFolder}},
 		SyncWrites: true,
 	}))
 }
@@ -201,7 +201,7 @@ func TestBothDecoratorsKeepTheirOwnMarker(t *testing.T) {
 		TimeSpan(TimeSpanConfig{Span: span, SyncWrites: true}),
 		InheritedProps(InheritedConfig{
 			Props:      props,
-			Rules:      []service.PropertyRule{{SourceKind: model.KindFolder, Property: "unit"}},
+			Rules:      []service.PropertyRule{{SourceKind: model.KindFolder}},
 			SyncWrites: true,
 		}),
 	)
@@ -504,7 +504,7 @@ func TestInheritedPropsRequiresProps(t *testing.T) {
 	t.Parallel()
 
 	assert.Panics(t, func() {
-		InheritedProps(InheritedConfig{Rules: []service.PropertyRule{{Property: "unit"}}})
+		InheritedProps(InheritedConfig{Rules: []service.PropertyRule{{SourceKind: model.KindFolder}}})
 	})
 }
 
@@ -522,7 +522,7 @@ func TestInheritedPropsRefreshRequiresLoader(t *testing.T) {
 	assert.Panics(t, func() {
 		InheritedProps(InheritedConfig{
 			Props:        newStubProps(),
-			Rules:        []service.PropertyRule{{Property: "unit"}},
+			Rules:        []service.PropertyRule{{SourceKind: model.KindFolder}},
 			RefreshEvery: time.Minute,
 		})
 	})
@@ -543,7 +543,7 @@ func TestInheritedPropsRefreshRebuildsTree(t *testing.T) {
 
 	cfg := InheritedConfig{
 		Props:        newStubProps(),
-		Rules:        []service.PropertyRule{{SourceKind: model.KindFolder, Property: "unit"}},
+		Rules:        []service.PropertyRule{{SourceKind: model.KindFolder}},
 		Loader:       loader,
 		RefreshEvery: 10 * time.Millisecond,
 	}

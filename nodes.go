@@ -36,13 +36,11 @@ var timeSpanKinds = []string{model.KindFolder, model.KindTimeseries}
 // one would sever the parent link above it and silently stop inheritance.
 var propertyKinds = []string{model.KindFolder, model.KindTimeseries}
 
-// propertyRules declare which metadata properties are inherited from which
-// source kind. A Folder carrying a unit passes it to every descendant that does
-// not define one itself, so a whole subtree of series can share a single unit.
+// propertyRules declare which node kinds supply inherited metadata to their
+// descendants. Every key a Folder holds reaches every descendant that does not
+// define it itself, so a whole subtree of series can share a single unit.
 var propertyRules = []service.PropertyRule{
-	{SourceKind: model.KindFolder, Property: "unit"},
-	{SourceKind: model.KindFolder, Property: "location"},
-	{SourceKind: model.KindFolder, Property: "resolution"},
+	{SourceKind: model.KindFolder},
 }
 
 // decorateNodes is the single place where cross-cutting node behaviour is

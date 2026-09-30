@@ -133,10 +133,7 @@ func newTestNodeService() service.NodeService {
 // is omitted because it needs a QuestDB connection, which the handler tests do
 // not provide.
 var testPropertyRules = []service.PropertyRule{
-	{SourceKind: model.KindFolder, Property: "unit"},
-	{SourceKind: model.KindFolder, Property: "lat"},
-	{SourceKind: model.KindFolder, Property: "lon"},
-	{SourceKind: model.KindFolder, Property: "resolution"},
+	{SourceKind: model.KindFolder},
 }
 
 func shutdown() {

@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// unitRule is the rule most cases share: a Folder's unit flows down.
-var unitRule = PropertyRule{SourceKind: model.KindFolder, Property: "unit"}
+// folderRule is the rule most cases share: everything a Folder holds flows down.
+var folderRule = PropertyRule{SourceKind: model.KindFolder}
 
 // propNode builds a node of the given kind with the given metadata.
 func propNode(id, parent int32, kind string, md map[string]any) model.Node {
@@ -72,7 +72,7 @@ func TestInheritedNearestAncestorWins(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			ps := newProps(t, tc.nodes, unitRule)
+			ps := newProps(t, tc.nodes, folderRule)
 
 			got := ps.Inherited(3)
 			require.NotNil(t, got)
@@ -96,7 +96,7 @@ func TestInheritedSourceKindIsHonoured(t *testing.T) {
 		propNode(1, 0, model.KindFolder, nil),
 		propNode(2, 1, model.KindTimeseries, map[string]any{"unit": "V"}),
 		propNode(3, 2, model.KindTimeseries, nil),
-	}, unitRule)
+	}, folderRule)
 
 	assert.Nil(t, ps.Inherited(3))
 }
@@ -104,33 +104,38 @@ func TestInheritedSourceKindIsHonoured(t *testing.T) {
 func TestInheritedSkipsNonMatchingIntermediateNodes(t *testing.T) {
 	t.Parallel()
 
-	// The series on node 2 does not match the rule's source kind, so the walk
-	// continues past it to the folder above.
+	// The series on node 2 does not match the rule's source kind, so it
+	// contributes nothing: neither its unit nor a key only it holds.
 	ps := newProps(t, []model.Node{
 		propNode(1, 0, model.KindFolder, map[string]any{"unit": "A"}),
-		propNode(2, 1, model.KindTimeseries, map[string]any{"unit": "B"}),
+		propNode(2, 1, model.KindTimeseries, map[string]any{"unit": "B", "own": "series"}),
 		propNode(3, 2, model.KindTimeseries, nil),
-	}, unitRule)
+	}, folderRule)
 
-	assert.Equal(t, "A", ps.Inherited(3)["unit"])
+	got := ps.Inherited(3)
+	assert.Equal(t, "A", got["unit"])
+	assert.NotContains(t, got, "own", "a non-source kind supplies nothing")
 }
 
-func TestInheritedMultipleRules(t *testing.T) {
+// A rule names a kind, not a property, so every key a source node holds is
+// inherited whether or not anything configured it by name.
+func TestInheritedTakesEveryKeyOfTheSource(t *testing.T) {
 	t.Parallel()
 
 	ps := newProps(t, []model.Node{
-		propNode(1, 0, model.KindFolder, map[string]any{"unit": "°C", "resolution": 60.0}),
+		propNode(1, 0, model.KindFolder, map[string]any{
+			"unit": "°C", "resolution": 60.0, "location": "hall",
+		}),
 		propNode(2, 1, model.KindFolder, map[string]any{"resolution": 30.0}),
 		propNode(3, 2, model.KindTimeseries, nil),
-	},
-		PropertyRule{SourceKind: model.KindFolder, Property: "unit"},
-		PropertyRule{SourceKind: model.KindFolder, Property: "resolution"},
-	)
+	}, folderRule)
 
-	got := ps.Inherited(3)
-	assert.Equal(t, "°C", got["unit"])
-	// The nearer folder wins for resolution only.
-	assert.Equal(t, 30.0, got["resolution"])
+	assert.Equal(t, map[string]any{
+		"unit":       "°C",
+		"resolution": 30.0,
+		"location":   "hall",
+	}, ps.Inherited(3),
+		"the nearer folder wins for the key it shares and the root supplies the rest")
 }
 
 func TestInheritedRootHasNoAncestors(t *testing.T) {
@@ -138,7 +143,7 @@ func TestInheritedRootHasNoAncestors(t *testing.T) {
 
 	ps := newProps(t, []model.Node{
 		propNode(1, 0, model.KindFolder, map[string]any{"unit": "°C"}),
-	}, unitRule)
+	}, folderRule)
 
 	// A node cannot inherit from itself, even though it holds the value.
 	assert.Nil(t, ps.Inherited(1))
@@ -152,7 +157,7 @@ func TestInheritedUnknownAndOrphanNodes(t *testing.T) {
 		propNode(2, 1, model.KindTimeseries, nil),
 		// Parent 99 does not exist, so the walk stops immediately.
 		propNode(3, 99, model.KindTimeseries, nil),
-	}, unitRule)
+	}, folderRule)
 
 	assert.Nil(t, ps.Inherited(404))
 	assert.Nil(t, ps.Inherited(3))
@@ -177,7 +182,7 @@ func TestInheritedTerminatesOnParentCycle(t *testing.T) {
 		propNode(1, 2, model.KindFolder, nil),
 		propNode(2, 1, model.KindFolder, map[string]any{"unit": "°C"}),
 		propNode(3, 1, model.KindTimeseries, nil),
-	}, unitRule)
+	}, folderRule)
 
 	assert.NotPanics(t, func() { ps.Inherited(3) })
 	assert.Equal(t, "°C", ps.Inherited(3)["unit"])
@@ -189,7 +194,7 @@ func TestSetLocalMetadataUpdatesInheritance(t *testing.T) {
 	ps := newProps(t, []model.Node{
 		propNode(1, 0, model.KindFolder, map[string]any{"unit": "K"}),
 		propNode(2, 1, model.KindTimeseries, nil),
-	}, unitRule)
+	}, folderRule)
 	assert.Equal(t, "K", ps.Inherited(2)["unit"])
 
 	md, err := model.MetadataFromMap(map[string]any{"unit": "°C"})
@@ -208,7 +213,7 @@ func TestSetLocalMetadataMergesRatherThanReplaces(t *testing.T) {
 	ps := newProps(t, []model.Node{
 		propNode(1, 0, model.KindFolder, map[string]any{"unit": "K", "own": "x"}),
 		propNode(2, 1, model.KindTimeseries, map[string]any{"own": "child"}),
-	}, unitRule)
+	}, folderRule)
 
 	// A patch that names one key, exactly as UpdateNodeMetadata would send it.
 	patch, err := model.MetadataFromMap(map[string]any{"unit": "°C"})
@@ -228,7 +233,7 @@ func TestSetLocalMetadataDropsComputedKeys(t *testing.T) {
 	ps := newProps(t, []model.Node{
 		propNode(1, 0, model.KindFolder, nil),
 		propNode(2, 1, model.KindTimeseries, nil),
-	}, unitRule)
+	}, folderRule)
 
 	echo, err := model.MetadataFromMap(map[string]any{
 		"own":               "x",
@@ -264,7 +269,7 @@ func localMetadataOf(t *testing.T, ps *NodePropertyService, id int32) map[string
 func TestSetLocalMetadataOnUnknownNodeIsIgnored(t *testing.T) {
 	t.Parallel()
 
-	ps := newProps(t, []model.Node{propNode(1, 0, model.KindFolder, nil)}, unitRule)
+	ps := newProps(t, []model.Node{propNode(1, 0, model.KindFolder, nil)}, folderRule)
 	md, err := model.MetadataFromMap(map[string]any{"unit": "°C"})
 	require.NoError(t, err)
 
@@ -277,7 +282,7 @@ func TestAddNodeRegistersInheritance(t *testing.T) {
 
 	ps := newProps(t, []model.Node{
 		propNode(1, 0, model.KindFolder, map[string]any{"unit": "°C"}),
-	}, unitRule)
+	}, folderRule)
 
 	ps.AddNode(2, 1, model.KindTimeseries, model.NewMetadata(nil))
 
@@ -289,7 +294,7 @@ func TestAddNodeIsIdempotent(t *testing.T) {
 
 	ps := newProps(t, []model.Node{
 		propNode(1, 0, model.KindFolder, map[string]any{"unit": "K"}),
-	}, unitRule)
+	}, folderRule)
 
 	// Re-adding an existing node must not overwrite the stored local value.
 	md, err := model.MetadataFromMap(map[string]any{"unit": "°C"})
@@ -305,8 +310,7 @@ func TestAddNodeDropsInheritedKeysFromStoredMetadata(t *testing.T) {
 
 	// A caller echoing a decorated node must not seed the tree with derived
 	// values as if they were local.
-	ps := newProps(t, []model.Node{propNode(1, 0, model.KindFolder, nil)},
-		PropertyRule{SourceKind: model.KindFolder, Property: "unit"})
+	ps := newProps(t, []model.Node{propNode(1, 0, model.KindFolder, nil)}, folderRule)
 
 	decorated, err := model.MetadataFromMap(map[string]any{
 		"unit":             "°C",
@@ -334,7 +338,7 @@ func TestMoveNodeChangesInheritedValue(t *testing.T) {
 		propNode(1, 0, model.KindFolder, map[string]any{"unit": "A"}),
 		propNode(2, 0, model.KindFolder, map[string]any{"unit": "B"}),
 		propNode(3, 1, model.KindTimeseries, nil),
-	}, unitRule)
+	}, folderRule)
 	assert.Equal(t, "A", ps.Inherited(3)["unit"])
 
 	ps.MoveNode(3, 2)
@@ -344,7 +348,7 @@ func TestMoveNodeChangesInheritedValue(t *testing.T) {
 func TestMoveUnknownNodeIsIgnored(t *testing.T) {
 	t.Parallel()
 
-	ps := newProps(t, []model.Node{propNode(1, 0, model.KindFolder, nil)}, unitRule)
+	ps := newProps(t, []model.Node{propNode(1, 0, model.KindFolder, nil)}, folderRule)
 	assert.NotPanics(t, func() { ps.MoveNode(404, 1) })
 }
 
@@ -359,7 +363,7 @@ func TestDeleteNodesCascades(t *testing.T) {
 		// An unrelated subtree that must be untouched.
 		propNode(5, 0, model.KindFolder, map[string]any{"unit": "V"}),
 		propNode(6, 5, model.KindTimeseries, nil),
-	}, unitRule)
+	}, folderRule)
 
 	ps.DeleteNodes([]int32{2})
 
@@ -387,7 +391,7 @@ func TestDeleteNodesCascadesThroughDeepChain(t *testing.T) {
 		}
 		nodes = append(nodes, propNode(i, parent, model.KindFolder, nil))
 	}
-	ps := newProps(t, nodes, unitRule)
+	ps := newProps(t, nodes, folderRule)
 
 	ps.DeleteNodes([]int32{1})
 
@@ -400,7 +404,7 @@ func TestDeleteNodesUnknownAndEmpty(t *testing.T) {
 	ps := newProps(t, []model.Node{
 		propNode(1, 0, model.KindFolder, map[string]any{"unit": "°C"}),
 		propNode(2, 1, model.KindTimeseries, nil),
-	}, unitRule)
+	}, folderRule)
 
 	before := len(ps.GetNodes())
 	assert.NotPanics(t, func() { ps.DeleteNodes(nil) })
@@ -421,15 +425,18 @@ func TestInitializeIgnoresStoredInheritedMarker(t *testing.T) {
 			model.InheritedKey: []any{"unit"},
 		}),
 		propNode(2, 1, model.KindTimeseries, nil),
-	}, unitRule)
+	}, folderRule)
 
-	assert.Nil(t, ps.Inherited(2), "the marker must not be trusted as a local source")
+	got := ps.Inherited(2)
+	require.NotNil(t, got)
+	assert.Equal(t, "mine", got["local"], "a genuinely local key is still inherited")
+	assert.NotContains(t, got, "unit", "the marker must not be trusted as a local source")
 }
 
 func TestGetNodesReturnsACopy(t *testing.T) {
 	t.Parallel()
 
-	ps := newProps(t, []model.Node{propNode(1, 0, model.KindFolder, nil)}, unitRule)
+	ps := newProps(t, []model.Node{propNode(1, 0, model.KindFolder, nil)}, folderRule)
 
 	nodes := ps.GetNodes()
 	nodes[0].Kind = "mutated"

@@ -6,18 +6,19 @@ import (
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 )
 
-// PropertyRule declares that a metadata property set on a node of SourceKind is
-// inherited by that node's descendants. A rule says nothing about the kind of
-// the receiving node: a Folder carrying unit passes it to every descendant
+// PropertyRule declares that the metadata of a node of SourceKind is inherited
+// by that node's descendants. A rule says nothing about the kind of the
+// receiving node: a Folder carrying unit passes it to every descendant
 // regardless of whether that descendant is a Folder or a Timeseries.
+//
+// A rule is scoped to a kind, not to a property. Every key a source node holds
+// is inherited, so a property nobody anticipated still reaches its descendants
+// and the set of inheritable properties cannot be narrowed from here.
 type PropertyRule struct {
-	// SourceKind is the node kind whose value is inherited. Empty matches any
+	// SourceKind is the node kind whose values are inherited. Empty matches any
 	// kind, which is rarely what is wanted, because it lets a Timeseries
 	// override a value intended to come from the folder above it.
 	SourceKind string
-
-	// Property is the metadata key, e.g. "unit" or "resolution".
-	Property string
 }
 
 // NodePropertyServiceInterface resolves inherited metadata properties from an
@@ -83,13 +84,17 @@ func localNode(n model.Node) model.Node {
 	return out
 }
 
-// Inherited walks the ancestor chain and collects the nearest value for each
-// configured property.
+// Inherited walks the ancestor chain and collects the nearest value of every
+// metadata key held by a source node.
 //
-// The marker keys are captured before the walk starts, so a node that both
-// declares a property locally and has an ancestor declaring it still reports
-// the inherited key: it IS inherited, even though the local value is what ends
-// up in the effective metadata.
+// The walk starts at the parent, so a node that both declares a key locally and
+// has an ancestor declaring it still reports the key: it IS inherited, even
+// though the local value is what ends up in the effective metadata.
+//
+// The walk has to reach the root. A key that only an upper ancestor holds is
+// inherited just the same, and a nearer ancestor that does not hold it cannot be
+// told apart from one that was never going to, so each source node contributes
+// what it is still missing instead of replacing what was already collected.
 func (ps *NodePropertyService) Inherited(nodeID int32) map[string]any {
 	if len(ps.rules) == 0 {
 		return nil
@@ -102,13 +107,11 @@ func (ps *NodePropertyService) Inherited(nodeID int32) map[string]any {
 		return nil
 	}
 
-	// One slot per rule, so a property configured for several kinds is filled
-	// by whichever matching ancestor is reached first.
-	out := make(map[string]any, len(ps.rules))
-	seen := make(map[int32]bool, len(ps.rules))
+	out := map[string]any{}
+	seen := map[int32]bool{}
 
 	cur := ps.nodes[nodeID].ParentID
-	for cur != 0 && len(out) < len(ps.rules) {
+	for cur != 0 {
 		// A malformed tree can contain a parent cycle. Without this guard the
 		// walk would spin forever on data the loader accepted.
 		if seen[cur] {
@@ -120,16 +123,15 @@ func (ps *NodePropertyService) Inherited(nodeID int32) map[string]any {
 		if !ok {
 			break
 		}
-		md := node.Metadata.Map()
-		for _, rule := range ps.rules {
-			if _, done := out[rule.Property]; done {
-				continue
-			}
-			if rule.SourceKind != "" && node.Kind != rule.SourceKind {
-				continue
-			}
-			if v, ok := md[rule.Property]; ok {
-				out[rule.Property] = v
+		if ps.supplies(node.Kind) {
+			// The tree holds only locally stored values, so every key here is a
+			// real property of the node: a computed one was stripped on the way
+			// in and cannot be inherited back down.
+			for key, value := range node.Metadata.Map() {
+				if _, done := out[key]; done {
+					continue
+				}
+				out[key] = value
 			}
 		}
 		cur = node.ParentID
@@ -139,6 +141,17 @@ func (ps *NodePropertyService) Inherited(nodeID int32) map[string]any {
 		return nil
 	}
 	return out
+}
+
+// supplies reports whether a node of the given kind contributes its metadata to
+// its descendants.
+func (ps *NodePropertyService) supplies(kind string) bool {
+	for _, rule := range ps.rules {
+		if rule.SourceKind == "" || rule.SourceKind == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // SetLocalMetadata records the local metadata of a node. An unknown node is

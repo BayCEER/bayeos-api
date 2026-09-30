@@ -367,3 +367,7 @@ SELECT setval('users_id_seq',1);
 
 -- Grant root rwg on root node and all off its descendants
 insert into node_privilege (node_id,grantee_id, permission,grantor_id) values (1,1,7,1);
+
+ALTER TABLE node_privilege ADD CONSTRAINT ck_deny_self_grants   
+    CHECK (grantor_id != grantee_id);
+
