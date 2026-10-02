@@ -43,24 +43,7 @@ func NewNodeService(sqlRepo repository.SqlRepo) NodeService {
 	}
 }
 
-// isSuperUser reports whether the caller holds the super_user flag.
-//
-// get_node_permission grants FULL_PERMISSION to a super user without consulting
-// node_privilege, so a super user's result never depends on the node. Callers
-// that resolve a permission for many nodes, or that resolve it only to decorate
-// a response, can ask here once and skip those per-node lookups entirely.
-// paginateHits stamps full permission on every hit and returns the requested
-// window, for the case where the caller is known to hold full permission on all
-// of them. It reports no total, because the caller already knows every hit is
-// visible and so can take len(hits) as the total itself.
 func paginateHits(hits []model.Node, skip int, limit int) []model.Node {
-	for i := range hits {
-		hits[i].Permission = model.FULL_PERMISSION
-	}
-	// The window is the same set of indices the per-node loop selects: from
-	// max(0, skip) up to skip+limit, clipped to the slice. Expressing it this
-	// way keeps the odd inputs behaving as they always did, so a negative skip
-	// selects from the start and a non-positive limit selects nothing.
 	start := skip
 	if start < 0 {
 		start = 0
@@ -203,10 +186,10 @@ func (s *nodeService) GetNodePrivs(ctx context.Context, id int32) (privs []model
 }
 
 func (s *nodeService) FindNodesByAntPath(ctx context.Context, pattern string, kind string, skip int, limit int, userID int32) (total int32, nodes []model.Node, err error) {
-	ctx, span := withServiceSpan(ctx, "nodes.findByAntPath")
+	ctx, span := withServiceSpan(ctx, "nodes.search_by_ant_path")
 	defer func() { endServiceSpan(span, err) }()
 	setUserID(span, userID)
-	span.SetAttributes(attribute.String("bayeos.search_pattern", pattern))
+	span.SetAttributes(attribute.String("bayeos.pattern", pattern))
 
 	regex, err := antToRegex(pattern)
 	if err != nil {
@@ -220,24 +203,25 @@ func (s *nodeService) FindNodesByAntPath(ctx context.Context, pattern string, ki
 
 	// A super user sees every hit, so total is known without the per-node walk.
 	if s.isSuperUser(ctx, userID) {
+		for i := range hits {
+			hits[i].Permission = model.FULL_PERMISSION
+		}
 		return int32(len(hits)), paginateHits(hits, skip, limit), nil
 	}
 
+	// None super user
 	nodes = []model.Node{}
-	for i, hit := range hits {
+	for _, hit := range hits {
 		if p, err := s.sqlRepo.GetNodePermission(ctx, hit.ID, userID); err != nil {
 			return 0, nil, fmt.Errorf("failed to get node permission: %w", err)
 		} else {
 			if model.Readable(p) {
 				hit.Permission = p
-				total++
-				if skip <= i && i < skip+limit {
-					nodes = append(nodes, hit)
-				}
+				nodes = append(nodes, hit)
 			}
 		}
 	}
-	return total, nodes, nil
+	return int32(len(nodes)), paginateHits(nodes, skip, limit), nil
 }
 
 func (s *nodeService) CreateNode(ctx context.Context, node *model.Node, userID int32) (err error) {
