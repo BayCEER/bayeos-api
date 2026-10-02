@@ -201,25 +201,10 @@ func (s *nodeService) FindNodesByAntPath(ctx context.Context, pattern string, ki
 		return 0, nil, fmt.Errorf("failed to find nodes: %w", err)
 	}
 
-	// A super user sees every hit, so total is known without the per-node walk.
-	if s.isSuperUser(ctx, userID) {
-		for i := range hits {
-			hits[i].Permission = model.FULL_PERMISSION
-		}
-		return int32(len(hits)), paginateHits(hits, skip, limit), nil
-	}
-
-	// None super user
 	nodes = []model.Node{}
-	for _, hit := range hits {
-		if p, err := s.sqlRepo.GetNodePermission(ctx, hit.ID, userID); err != nil {
-			return 0, nil, fmt.Errorf("failed to get node permission: %w", err)
-		} else {
-			if model.Readable(p) {
-				hit.Permission = p
-				nodes = append(nodes, hit)
-			}
-		}
+	nodes, err = s.getUserReadableNodes(ctx, hits, userID)
+	if err != nil {
+		return 0, nil, err
 	}
 	return int32(len(nodes)), paginateHits(nodes, skip, limit), nil
 }
