@@ -91,8 +91,15 @@ func (s *userService) CreateUser(tx context.Context, cre model.SignUpCredentials
 			return err
 		}
 
-		// Grant privilege to user
-		p := model.NewNodePrivilege(node.ID, u.ID, u.ID)
+		// Grant the new user full access to their home folder. Sign up is
+		// unauthenticated, so there is no grantor on the request; the system
+		// user stands in. It cannot be the new user itself, which
+		// ck_node_privilege_grantor forbids.
+		sysUserID, err := repo.FindSysUserID(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to resolve system user as grantor: %w", err)
+		}
+		p := model.NewNodePrivilege(node.ID, sysUserID, u.ID)
 		if err := repo.CreateNodePriv(ctx, &p); err != nil {
 			return err
 		}

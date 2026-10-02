@@ -1,7 +1,7 @@
 get:
   tags:
     - Nodes
-  summary: Search for nodes
+  summary: Search nodes by Ant path pattern
   description: |
     Search nodes by matching their full path against an Ant-style glob pattern.
 

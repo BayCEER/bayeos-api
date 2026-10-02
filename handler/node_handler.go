@@ -96,7 +96,7 @@ func (h *Handler) GetNodeParents(c *gin.Context) {
 	}
 }
 
-func (h *Handler) SearchNodes(c *gin.Context) {
+func (h *Handler) SearchNodesByAntPath(c *gin.Context) {
 	pattern := c.DefaultQuery("pattern", "")
 	if pattern == "" {
 		mw.AbortWithBadRequestError(c, "Invalid pattern parameter")

@@ -97,6 +97,21 @@ func main() {
 		r.Use(cors.New(corsConfig))
 	}
 
+	responseDelay, exists := os.LookupEnv("WS_RESPONSE_DELAY")
+	if exists {
+		delay, err := strconv.Atoi(responseDelay)
+		if err != nil {
+			log.Fatalf("failed to parse WS_RESPONSE_DELAY: %v", err)
+		}
+		if delay > 0 {
+			log.Infof("adding response delay of %d ms", delay)
+			r.Use(func(c *gin.Context) {
+				time.Sleep(time.Duration(delay) * time.Millisecond)
+				c.Next()
+			})
+		}
+	}
+
 	// OpenTelemetry middleware must be registered before the error-response middleware (registered in NewMainHandler), so that the traceId is available in the error response.
 	r.Use(otelgin.Middleware(serviceName))
 
@@ -237,7 +252,7 @@ func main() {
 		propertyLoader(sqlRepo),
 	)
 
-	timeseriesService := service.NewTimeseriesService(nodeService, nodePrivService, questRepo)
+	timeseriesService := service.NewTimeseriesService(nodeService, questRepo)
 
 	// Adding routes
 	handler.NewMainHandler(&handler.Config{

@@ -1,6 +1,9 @@
 -- Node 
 create type node_path as (path text, ids int[]);
 
+-- Required by the gin_trgm_ops index on node path below
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TABLE node (
     id serial primary key,
     display_name text not null,
@@ -251,8 +254,9 @@ delete
     public.USERS for each row execute function users_delete_cascade();
     
 -- Indexes
--- To speed up full text search
-create index node_path_path on node (((path).path));
+
+-- To speed up find by path
+CREATE INDEX node_path_path_trgm ON node USING gin (((path).path) gin_trgm_ops);
 
 -- To speed up get child
 create index node_parent_id on node (parent_id);
@@ -273,6 +277,10 @@ CREATE INDEX idx_node_metadata ON node USING gin (metadata);
 ALTER TABLE node_privilege ADD CONSTRAINT ck_node_privilege_grantee
     CHECK (grantee_id IS NOT NULL OR grantee_group_id IS NOT NULL);
 
+-- A user cannot grant privileges to itself
+ALTER TABLE node_privilege ADD CONSTRAINT ck_node_privilege_grantor
+    CHECK (grantee_id IS NULL OR grantee_id != grantor_id);
+    
 
 -- Foreign keys
 
@@ -365,9 +373,6 @@ insert into users (id,display_name,sign_in_name,password_hash,super_user,sys_use
 (1,'Administrator','root','4336bc9de7a6b11940e897ee22956d51',true,true,3);
 SELECT setval('users_id_seq',1);   
 
--- Grant root rwg on root node and all off its descendants
-insert into node_privilege (node_id,grantee_id, permission,grantor_id) values (1,1,7,1);
 
-ALTER TABLE node_privilege ADD CONSTRAINT ck_deny_self_grants   
-    CHECK (grantor_id != grantee_id);
+
 

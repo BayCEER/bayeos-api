@@ -29,6 +29,41 @@ func (r *SqlRepo) FindUserByID(ctx context.Context, ID int32) (model.User, error
 	return u, nil
 }
 
+// FindSysUserID returns the id of the system user, the account the API uses as
+// grantor for privileges it creates on a user's behalf during sign up.
+//
+// The system user is the only party that can stand in as grantor there: sign up
+// is unauthenticated, so no authenticated user exists to grant anything, and
+// ck_node_privilege_grantor forbids a user from granting to itself.
+func (r *SqlRepo) FindSysUserID(ctx context.Context) (int32, error) {
+	var id int32
+	stmt := `SELECT id FROM users WHERE sys_user = true ORDER BY id LIMIT 1`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, &id, stmt)
+	endQuerySpan(span, err)
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+// IsSuperUser reports whether the user holds the super_user flag.
+//
+// get_node_permission already short-circuits on that flag, but only after
+// running its permission walk. Callers that would otherwise resolve a
+// permission once per node can ask here once and skip those calls entirely.
+func (r *SqlRepo) IsSuperUser(ctx context.Context, userID int32) (bool, error) {
+	var super bool
+	stmt := `SELECT coalesce(super_user,false) FROM users WHERE id=$1`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, &super, stmt, userID)
+	endQuerySpan(span, err)
+	if err != nil {
+		return false, err
+	}
+	return super, nil
+}
+
 func (r *SqlRepo) FindUsersByIDs(ctx context.Context, ids []int32) ([]model.User, error) {
 	u := []model.User{}
 	stmt := `SELECT id, display_name,sign_in_name,email_address,home_node_id, 

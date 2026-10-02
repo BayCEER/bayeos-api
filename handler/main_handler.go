@@ -109,7 +109,7 @@ func NewMainHandler(c *Config) {
 	sec.GET("/usergroups/:id/privileges", m.AuthSuper(), h.GetUserGroupPrivileges)
 
 	// Node
-	sec.GET("/nodes/search", h.SearchNodes)
+	sec.GET("/nodes/search", h.SearchNodesByAntPath)
 	sec.GET("/nodes", h.GetNodes)
 
 	rwCheck := m.NodePermissionCheck(h.NodeService, mo.READ_PERMISSION+mo.WRITE_PERMISSION)

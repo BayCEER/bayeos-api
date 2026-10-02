@@ -36,14 +36,13 @@ type TimeseriesService interface {
 
 type timeseriesService struct {
 	nodes   NodeService
-	privs   NodePrivService
 	queries repository.QuestRepo
 }
 
-// NewTimeseriesService returns a TimeseriesService backed by node/priv services
-// and a QuestRepo for data.
-func NewTimeseriesService(nodes NodeService, privs NodePrivService, queries repository.QuestRepo) TimeseriesService {
-	return &timeseriesService{nodes: nodes, privs: privs, queries: queries}
+// NewTimeseriesService returns a TimeseriesService backed by a NodeService and
+// a QuestRepo for data.
+func NewTimeseriesService(nodes NodeService, queries repository.QuestRepo) TimeseriesService {
+	return &timeseriesService{nodes: nodes, queries: queries}
 }
 
 func (s *timeseriesService) Create(ctx context.Context, cre model.TimeseriesCreate, baseNodeID int32, userID int32) (node model.Node, err error) {
@@ -85,11 +84,11 @@ func (s *timeseriesService) Create(ctx context.Context, cre model.TimeseriesCrea
 		}
 	}
 
-	// Grant the creator full permission on the new timeseries.
-	priv := model.NewNodePrivilege(node.ID, userID, userID)
-	if err := s.privs.CreateNodePriv(ctx, &priv); err != nil {
-		return model.Node{}, err
-	}
+	// No explicit privilege for the creator: get_node_permission inherits
+	// grants from ancestors, and the caller already had read+write on the
+	// parent (enforced by the route middleware), so the new series inherits
+	// at least that. Granting it here would need a grantor distinct from the
+	// creator, which ck_node_privilege_grantor forbids.
 	return node, nil
 }
 

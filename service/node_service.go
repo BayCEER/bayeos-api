@@ -24,6 +24,7 @@ type NodeService interface {
 	DeleteNode(ctx context.Context, id int32) error
 	FindNodeDescendantsByID(ctx context.Context, id int32) ([]int32, error)
 	DeleteNodesByIDs(ctx context.Context, ids []int32) error
+
 	FindNodeByToken(ctx context.Context, token uuid.UUID) (model.Node, error)
 	FindNodesByAntPath(ctx context.Context, pattern string, kind string, skip int, limit int, userID int32) (int32, []model.Node, error)
 
@@ -42,7 +43,59 @@ func NewNodeService(sqlRepo repository.SqlRepo) NodeService {
 	}
 }
 
+// isSuperUser reports whether the caller holds the super_user flag.
+//
+// get_node_permission grants FULL_PERMISSION to a super user without consulting
+// node_privilege, so a super user's result never depends on the node. Callers
+// that resolve a permission for many nodes, or that resolve it only to decorate
+// a response, can ask here once and skip those per-node lookups entirely.
+// paginateHits stamps full permission on every hit and returns the requested
+// window, for the case where the caller is known to hold full permission on all
+// of them. It reports no total, because the caller already knows every hit is
+// visible and so can take len(hits) as the total itself.
+func paginateHits(hits []model.Node, skip int, limit int) []model.Node {
+	for i := range hits {
+		hits[i].Permission = model.FULL_PERMISSION
+	}
+	// The window is the same set of indices the per-node loop selects: from
+	// max(0, skip) up to skip+limit, clipped to the slice. Expressing it this
+	// way keeps the odd inputs behaving as they always did, so a negative skip
+	// selects from the start and a non-positive limit selects nothing.
+	start := skip
+	if start < 0 {
+		start = 0
+	}
+	end := skip + limit
+	if end > len(hits) {
+		end = len(hits)
+	}
+	if end <= start {
+		return []model.Node{}
+	}
+	return hits[start:end]
+}
+
+func (s *nodeService) isSuperUser(ctx context.Context, userID int32) bool {
+	super, err := s.sqlRepo.IsSuperUser(ctx, userID)
+	if err != nil {
+		// A failed lookup must not be read as "not a super user": that would
+		// silently downgrade the caller's access. Fall through to the per-node
+		// path, which re-reads the flag itself.
+		return false
+	}
+	return super
+}
+
 func (s *nodeService) getUserReadableNodes(ctx context.Context, nodes []model.Node, userID int32) ([]model.Node, error) {
+
+	// A super user can read every node, so the per-node permission lookups are
+	// pure overhead: N+1 queries that can only ever return full permission.
+	if s.isSuperUser(ctx, userID) {
+		for i := range nodes {
+			nodes[i].Permission = model.FULL_PERMISSION
+		}
+		return nodes, nil
+	}
 
 	readableNodes := []model.Node{}
 	for _, node := range nodes {
@@ -67,6 +120,11 @@ func (s *nodeService) GetNode(ctx context.Context, id int32, userID int32) (n mo
 	n, err = s.sqlRepo.FindNodeByID(ctx, id)
 	if err != nil {
 		return model.Node{}, fmt.Errorf("node with id %d not found: %w", id, err)
+	}
+
+	if s.isSuperUser(ctx, userID) {
+		n.Permission = model.FULL_PERMISSION
+		return n, nil
 	}
 
 	if p, err := s.sqlRepo.GetNodePermission(ctx, n.ID, userID); err != nil {
@@ -145,7 +203,7 @@ func (s *nodeService) GetNodePrivs(ctx context.Context, id int32) (privs []model
 }
 
 func (s *nodeService) FindNodesByAntPath(ctx context.Context, pattern string, kind string, skip int, limit int, userID int32) (total int32, nodes []model.Node, err error) {
-	ctx, span := withServiceSpan(ctx, "nodes.search")
+	ctx, span := withServiceSpan(ctx, "nodes.findByAntPath")
 	defer func() { endServiceSpan(span, err) }()
 	setUserID(span, userID)
 	span.SetAttributes(attribute.String("bayeos.search_pattern", pattern))
@@ -158,6 +216,11 @@ func (s *nodeService) FindNodesByAntPath(ctx context.Context, pattern string, ki
 	hits, err := s.sqlRepo.FindNodesByAntPath(ctx, regex, kind)
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to find nodes: %w", err)
+	}
+
+	// A super user sees every hit, so total is known without the per-node walk.
+	if s.isSuperUser(ctx, userID) {
+		return int32(len(hits)), paginateHits(hits, skip, limit), nil
 	}
 
 	nodes = []model.Node{}
@@ -332,6 +395,12 @@ func (s *nodeService) HasPermission(ctx context.Context, id int32, perm uint8, u
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
 	setUserID(span, userID)
+
+	// A super user is granted full permission on every node, so a request
+	// holding it cannot fail on the permission being asked for.
+	if s.isSuperUser(ctx, userID) {
+		return true, nil
+	}
 
 	granted, err := s.sqlRepo.GetNodePermission(ctx, id, userID)
 	if err != nil {
