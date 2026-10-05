@@ -15,6 +15,16 @@ get:
 
     Special regex characters (`.`, `+`, `^`, `$`, `{`, `}`, `[`, `]`, `(`, `)`, `|`) are escaped automatically.
 
+    **Home prefix:**
+
+    A pattern that starts with `~` is resolved against the home node of the
+    authenticated user (`users.home_node_id`) before it is matched, the same
+    prefix `POST /nodes` and `POST /timeseries` accept in `node_path`. `~` alone
+    matches the home node itself; `~/data`, `~/*` and `~/**` match what
+    `/Users/<you>/data`, `/Users/<you>/*` and `/Users/<you>/**` match. Only a
+    leading `~` is expanded, so `**/~sensor*` still matches a node literally named
+    `~sensor`.
+
     Results are ordered by path and filtered to nodes readable by the authenticated user.
 
     Optionally filter by `kind` (omit to match all kinds).
@@ -24,7 +34,7 @@ get:
     - name: pattern
       in: query
       required: true
-      description: "Ant-style path pattern"
+      description: "Ant-style path pattern; a leading `~` stands for the caller's home node"
       schema:
         type: string
       examples:
@@ -32,6 +42,14 @@ get:
           summary: Exact path match
           description: "Matches only the node at `/BayEOS/Home/Sensor1`"
           value: "/BayEOS/Home/Sensor1"
+        home_relative:
+          summary: Relative to the caller's home node
+          description: "`~` is the caller's home node. Matches every node below it, without looking anywhere else in the tree."
+          value: "~/**"
+        home_children:
+          summary: Direct children of the caller's home node
+          description: "Matches the direct children of the caller's home node."
+          value: "~/*"
         single_char:
           summary: Single character wildcard (?)
           description: "`?` matches exactly one character. Matches `Sensor1`, `Sensor2`, etc. but not `Sensor10`."

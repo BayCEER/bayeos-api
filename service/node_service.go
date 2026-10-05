@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/BayCEER/bayeos/bayeos-api/repository"
@@ -185,11 +186,38 @@ func (s *nodeService) GetNodePrivs(ctx context.Context, id int32) (privs []model
 	return privs, nil
 }
 
+// homePath resolves the node_path of a user's home node: the node a leading "~"
+// in a path stands for.
+func (s *nodeService) homePath(ctx context.Context, userID int32) (string, error) {
+	user, err := s.sqlRepo.FindUserByID(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("failed to find user with id %d: %w", userID, err)
+	}
+	home, err := s.sqlRepo.FindNodeByID(ctx, user.HomeNodeID)
+	if err != nil {
+		return "", fmt.Errorf("failed to find home node with id %d: %w", user.HomeNodeID, err)
+	}
+	return home.NodePath, nil
+}
+
 func (s *nodeService) FindNodesByAntPath(ctx context.Context, pattern string, kind string, skip int, limit int, userID int32) (total int32, nodes []model.Node, err error) {
 	ctx, span := withServiceSpan(ctx, "nodes.search_by_ant_path")
 	defer func() { endServiceSpan(span, err) }()
 	setUserID(span, userID)
 	span.SetAttributes(attribute.String("bayeos.pattern", pattern))
+
+	// A leading "~" is the caller's home node, so the pattern only becomes an
+	// Ant pattern once that prefix is a path. Resolved here because the service
+	// owns the path syntax; the request only carries a user id.
+	if strings.HasPrefix(pattern, "~") {
+		var homePath string
+		homePath, err = s.homePath(ctx, userID)
+		if err != nil {
+			return 0, nil, err
+		}
+		pattern = expandHome(pattern, homePath)
+		span.SetAttributes(attribute.String("bayeos.expanded_pattern", pattern))
+	}
 
 	regex, err := antToRegex(pattern)
 	if err != nil {

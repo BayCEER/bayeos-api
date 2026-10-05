@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/BayCEER/bayeos/bayeos-api/model"
@@ -221,6 +222,48 @@ func TestSearchNodes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int32(1), searchResult.Total)
 	require.Equal(t, 1, len(searchResult.Hits))
+
+	// A leading "~" stands for the caller's home node
+	req, err = NewJWTRequest("GET", "/bayeos-api/nodes/search?pattern=~/**", nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	err = json.Unmarshal(w.Body.Bytes(), &searchResult)
+	require.NoError(t, err)
+	require.Equal(t, int32(4), searchResult.Total)
+	require.Equal(t, 4, len(searchResult.Hits))
+	for _, hit := range searchResult.Hits {
+		require.True(t, strings.HasPrefix(hit.NodePath, "/Users/antuser/"),
+			"hit %q is not below the caller's home", hit.NodePath)
+	}
+
+	// "~" on its own is the home node itself
+	req, err = NewJWTRequest("GET", "/bayeos-api/nodes/search?pattern=~", nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	err = json.Unmarshal(w.Body.Bytes(), &searchResult)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), searchResult.Total)
+	require.Equal(t, user.HomeNodeID, searchResult.Hits[0].ID)
+
+	// The home node of one user is not the home node of another, so "~" must not
+	// widen into a match on somebody else's tree.
+	otherToken, err := SignUp("otherant", "antpass")
+	require.NoError(t, err)
+	req, err = NewJWTRequest("GET", "/bayeos-api/nodes/search?pattern=~/**", nil, otherToken)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	err = json.Unmarshal(w.Body.Bytes(), &searchResult)
+	require.NoError(t, err)
+	require.Equal(t, int32(0), searchResult.Total)
 
 	// Missing pattern is a bad request
 	req, err = NewJWTRequest("GET", "/bayeos-api/nodes/search", nil, token)
