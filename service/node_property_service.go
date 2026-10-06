@@ -159,10 +159,11 @@ func (ps *NodePropertyService) supplies(kind string) bool {
 // ancestry is unknown.
 //
 // The patch is merged, not substituted, because that is what the column does.
-// UpdateNodeMetadata runs "metadata = metadata || $1::jsonb", so a client that
-// sends one key adds one key. Replacing the mirrored document here would drop
-// every other local key from the mirror, and every later read would then resolve
-// those keys as if the node had never had them.
+// UpdateNodeMetadata merges the patch into the document, so a client that
+// sends one key adds one key, and a key sent as null removes that key.
+// Replacing the mirrored document here would drop every other local key from
+// the mirror, and every later read would then resolve those keys as if the node
+// had never had them.
 func (ps *NodePropertyService) SetLocalMetadata(nodeID int32, metadata model.Metadata) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()

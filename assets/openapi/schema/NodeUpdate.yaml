@@ -18,10 +18,11 @@ properties:
       Optional arbitrary key/value metadata; a `resolution` value in seconds
       enables completeness statistics and gap detection. Properties inherited
       from an ancestor may be overridden here by sending the property without
-      the `_inherited` marker. A body containing `_inherited` or `_aggregated`
-      is rejected with 400, because both markers are computed on read and never
-      stored. The span keys `first` and `last` are dropped, so a node's time
-      span always tracks its own data.
+      the `_inherited` marker, and a property is deleted by sending it as
+      `null`. A body containing `_inherited` or `_aggregated` is rejected with
+      400, because both markers are computed on read and never stored. The span
+      keys `first` and `last` are dropped, so a node's time span always tracks
+      its own data.
 example:
   display_name: "Temperature (10m)"
   metadata:

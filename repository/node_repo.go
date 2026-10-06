@@ -165,8 +165,16 @@ func (r *SqlRepo) UpdateNodeFieldByID(ctx context.Context, ID int32, name string
 // are applied: every computed marker and every key it names are dropped, along
 // with the time span keys, so echoing a decorated node back cannot turn derived
 // values into stored ones.
+//
+// A top-level key whose patch value is null is deleted rather than stored as a
+// null, which is how a client removes a property. The deletion runs after the
+// merge so a key present in both documents ends up removed. Nested nulls are
+// not interpreted: only the top level of the patch is scanned, matching the
+// top-level scan in model.MergeMetadata.
 func (r *SqlRepo) MergeNodeMetadata(ctx context.Context, ID int32, metadata model.Metadata) error {
-	stmt := `UPDATE node SET metadata = metadata || $1::jsonb WHERE id = $2`
+	stmt := `UPDATE node SET metadata = (metadata || $1::jsonb)
+		- ARRAY(SELECT key FROM jsonb_each($1::jsonb) WHERE value = 'null'::jsonb)
+		WHERE id = $2`
 	c, span := withQuerySpan(ctx, stmt)
 	_, err := r.trans.ExecContext(c, stmt, model.StripComputed(metadata), ID)
 	endQuerySpan(span, err)

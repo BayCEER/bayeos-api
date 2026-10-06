@@ -137,6 +137,60 @@ func TestNodeCRUD(t *testing.T) {
 
 }
 
+func TestNodeMetadataNullDeletesKey(t *testing.T) {
+	token, err := SignUp("barney", "slurms")
+	require.NoError(t, err)
+	user, err := CurrentUser(token)
+	require.NoError(t, err)
+
+	// CREATE with two metadata keys
+	node := model.Node{
+		DisplayName: "Moe's Bar",
+		ParentID:    user.HomeNodeID,
+		Metadata:    model.NewMetadata([]byte(`{"unit":"V","own":"x"}`)),
+	}
+	req, err := NewJWTRequest("POST", "/bayeos-api/nodes", node, token)
+	require.NoError(t, err)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	var newNode model.Node
+	err = json.Unmarshal(w.Body.Bytes(), &newNode)
+	require.NoError(t, err)
+
+	// PATCH one key to null and update the other in the same write
+	patch := []byte(`{"metadata":{"own":null,"unit":"°C"}}`)
+	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/bayeos-api/nodes/%d", newNode.ID), bytes.NewBuffer(patch), token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// GET: the nulled key is gone, the other key merged
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d", newNode.ID), nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var got model.Node
+	err = json.Unmarshal(w.Body.Bytes(), &got)
+	require.NoError(t, err)
+
+	md := got.Metadata.Map()
+	_, ownPresent := md["own"]
+	require.False(t, ownPresent, "a key sent as null must be deleted, not stored as null")
+	require.Equal(t, "°C", md["unit"])
+
+	// DELETE the node again
+	req, err = NewJWTRequest("DELETE", fmt.Sprintf("/bayeos-api/nodes/%d", newNode.ID), nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestGetRootNode(t *testing.T) {
 	// New user
 	token, err := SignUp("marge", "123456789")

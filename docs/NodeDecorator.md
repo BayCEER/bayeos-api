@@ -351,9 +351,10 @@ ancestor takes effect on the next read with no rebuild, and a derived value can
 never drift into being local.
 
 **The write invariant.** `MergeNodeMetadata` (`repository/node_repo.go:170`) runs
-`metadata = metadata || $1::jsonb`, which is additive. Without a guard, a client
-that GETs a node and PATCHes the body back would store the inherited value
-permanently, silently freezing inheritance for that node.
+`metadata = (metadata || $1::jsonb) - <keys nulled by the patch>`, which is
+additive apart from keys the patch explicitly deletes by sending them as null.
+Without a guard, a client that GETs a node and PATCHes the body back would store
+the inherited value permanently, silently freezing inheritance for that node.
 
 The guarantee is enforced in two layers, because the storage layer is the only
 one that cannot be bypassed:

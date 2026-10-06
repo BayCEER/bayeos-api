@@ -304,10 +304,28 @@ func TestMergeMetadataMatchesJsonbConcat(t *testing.T) {
 			want:  `{"tags":["c"]}`,
 		},
 		{
-			name:  "a null stores a null and does not delete the key",
-			base:  `{"own":"x"}`,
+			name:  "a null deletes the key",
+			base:  `{"own":"x","other":"y"}`,
 			patch: `{"own":null}`,
-			want:  `{"own":null}`,
+			want:  `{"other":"y"}`,
+		},
+		{
+			name:  "a null for a key that is not stored changes nothing",
+			base:  `{"other":"y"}`,
+			patch: `{"own":null}`,
+			want:  `{"other":"y"}`,
+		},
+		{
+			name:  "a null next to a value merges the value and deletes the key",
+			base:  `{"own":"x","unit":"V"}`,
+			patch: `{"own":null,"unit":"°C"}`,
+			want:  `{"unit":"°C"}`,
+		},
+		{
+			name:  "a nested null is stored, not interpreted",
+			base:  `{"opts":{"a":1}}`,
+			patch: `{"opts":{"a":null}}`,
+			want:  `{"opts":{"a":null}}`,
 		},
 		{
 			name:  "an empty patch changes nothing",

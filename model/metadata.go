@@ -158,10 +158,12 @@ func MetadataFromMap(m map[string]any) (Metadata, error) {
 	return Metadata{RawMessage: data}, nil
 }
 
-// MergeMetadata returns base with patch applied the way Postgres' jsonb || would
-// apply it: a shallow merge of the top-level keys, with nested objects merged
-// recursively, and every other value replaced outright. A key set to null in the
-// patch stores a null, it does not delete the key.
+// MergeMetadata returns base with patch applied the way the column's merge
+// applies it: a shallow merge of the top-level keys, with nested objects merged
+// recursively, and every other value replaced outright. A top-level key set to
+// null in the patch is deleted from the result rather than stored as a null,
+// which is how a client removes a property. Nested nulls are not interpreted;
+// only the top level of the patch is scanned.
 //
 // It exists so an in-memory mirror of a node's metadata can be updated the same
 // way the column is. Metadata writes are additive in SQL, so a service that
@@ -169,7 +171,18 @@ func MetadataFromMap(m map[string]any) (Metadata, error) {
 // partial patch dropping a key from the mirror would look to every later read
 // like an inheritance of that key had been removed.
 func MergeMetadata(base, patch Metadata) Metadata {
-	merged := mergeMaps(base.Map(), patch.Map())
+	values := patch.Map()
+	deleted := make([]string, 0, len(values))
+	for k, v := range values {
+		if v == nil {
+			deleted = append(deleted, k)
+			delete(values, k)
+		}
+	}
+	merged := mergeMaps(base.Map(), values)
+	for _, k := range deleted {
+		delete(merged, k)
+	}
 	out, err := MetadataFromMap(merged)
 	if err != nil {
 		// Both inputs came from a decoded document, so both are encodable.
