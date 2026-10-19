@@ -21,16 +21,16 @@ func (h *Handler) GetNode(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	} else {
-		if userID, exists := mw.AuthUserIDFromContext(c); !exists {
-			mw.AbortWithInternalError(c, "user id not found")
+		access, ok := mw.NodeAccessFromContext(c)
+		if !ok {
+			mw.AbortWithUnauthorizedError(c, "unauthenticated")
+			return
+		}
+		if n, err := h.NodeService.GetNode(c.Request.Context(), int32(id), access); err != nil {
+			mw.AbortWithNotFoundError(c, "node", "id", c.Param("id"))
 			return
 		} else {
-			if n, err := h.NodeService.GetNode(c.Request.Context(), int32(id), userID); err != nil {
-				mw.AbortWithNotFoundError(c, "node", "id", c.Param("id"))
-				return
-			} else {
-				c.JSON(http.StatusOK, n)
-			}
+			c.JSON(http.StatusOK, n)
 		}
 	}
 }
@@ -42,19 +42,17 @@ func (h *Handler) GetNodes(c *gin.Context) {
 		return
 	}
 
-	if userID, exists := mw.AuthUserIDFromContext(c); !exists {
-		mw.AbortWithInternalError(c, "user id not found")
+	access, ok := mw.NodeAccessFromContext(c)
+	if !ok {
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
+		return
+	}
+	if nodes, err := h.NodeService.GetNodes(c.Request.Context(), ids, access); err != nil {
+		mw.AbortWithInternalError(c, "Nodes not found")
 		return
 	} else {
-		if nodes, err := h.NodeService.GetNodes(c.Request.Context(), ids, userID); err != nil {
-			mw.AbortWithInternalError(c, "Nodes not found")
-			return
-		} else {
-			c.JSON(http.StatusOK, nodes)
-		}
-
+		c.JSON(http.StatusOK, nodes)
 	}
-
 }
 
 func (h *Handler) GetNodeChildren(c *gin.Context) {
@@ -64,16 +62,16 @@ func (h *Handler) GetNodeChildren(c *gin.Context) {
 		return
 	}
 
-	if userID, exists := mw.AuthUserIDFromContext(c); !exists {
-		mw.AbortWithInternalError(c, "user id not found")
+	access, ok := mw.NodeAccessFromContext(c)
+	if !ok {
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
+		return
+	}
+	if n, err := h.NodeService.GetNodeChildren(c.Request.Context(), int32(id), access); err != nil {
+		mw.AbortWithNotFoundError(c, "node", "id", c.Param("id"))
 		return
 	} else {
-		if n, err := h.NodeService.GetNodeChildren(c.Request.Context(), int32(id), userID); err != nil {
-			mw.AbortWithNotFoundError(c, "node", "id", c.Param("id"))
-			return
-		} else {
-			c.JSON(http.StatusOK, n)
-		}
+		c.JSON(http.StatusOK, n)
 	}
 }
 
@@ -84,15 +82,15 @@ func (h *Handler) GetNodeParents(c *gin.Context) {
 		return
 	}
 
-	if userID, exists := mw.AuthUserIDFromContext(c); !exists {
-		mw.AbortWithInternalError(c, "user id not found")
+	access, ok := mw.NodeAccessFromContext(c)
+	if !ok {
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
+	}
+	if n, err := h.NodeService.GetNodeParents(c.Request.Context(), int32(id), access); err != nil {
+		mw.AbortWithNotFoundError(c, "node", "id", c.Param("id"))
 	} else {
-		if n, err := h.NodeService.GetNodeParents(c.Request.Context(), int32(id), userID); err != nil {
-			mw.AbortWithNotFoundError(c, "node", "id", c.Param("id"))
-		} else {
-			c.JSON(http.StatusOK, n)
-		}
+		c.JSON(http.StatusOK, n)
 	}
 }
 
@@ -113,12 +111,12 @@ func (h *Handler) SearchNodesByAntPath(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid limit parameter")
 		return
 	}
-	userID, exists := mw.AuthUserIDFromContext(c)
-	if !exists {
-		mw.AbortWithInternalError(c, "user id not found")
+	access, ok := mw.NodeAccessFromContext(c)
+	if !ok {
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
 	}
-	if total, nodes, err := h.NodeService.FindNodesByAntPath(c.Request.Context(), pattern, kind, skip, limit, userID); err != nil {
+	if total, nodes, err := h.NodeService.FindNodesByAntPath(c.Request.Context(), pattern, kind, skip, limit, access); err != nil {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Search failed: %v", err))
 	} else {
 		c.JSON(http.StatusOK, gin.H{"total": total, "hits": nodes})
@@ -138,9 +136,9 @@ func (h *Handler) CreateNode(c *gin.Context) {
 		return
 	}
 
-	userID, exists := mw.AuthUserIDFromContext(c)
-	if !exists {
-		mw.AbortWithInternalError(c, "user id not found")
+	access, ok := mw.NodeAccessFromContext(c)
+	if !ok {
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
 	}
 
@@ -165,7 +163,7 @@ func (h *Handler) CreateNode(c *gin.Context) {
 		if len(rel) > 0 && (rel[0] == '/' || rel[0] == '~') {
 			rel = rel[1:]
 		}
-		if err := h.NodeService.CreateNodeByPath(c.Request.Context(), &d, baseID, rel, userID); err != nil {
+		if err := h.NodeService.CreateNodeByPath(c.Request.Context(), &d, baseID, rel, access); err != nil {
 			mw.AbortWithInternalError(c, fmt.Sprintf("Failed to create node: %v", err))
 			return
 		}
@@ -175,7 +173,7 @@ func (h *Handler) CreateNode(c *gin.Context) {
 			return
 		}
 		d.ParentID = *body.ParentID
-		if err := h.NodeService.CreateNode(c.Request.Context(), &d, userID); err != nil {
+		if err := h.NodeService.CreateNode(c.Request.Context(), &d, access); err != nil {
 			mw.AbortWithInternalError(c, fmt.Sprintf("Failed to create node: %v", err))
 			return
 		}

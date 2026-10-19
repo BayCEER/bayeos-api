@@ -94,14 +94,15 @@ func setup() {
 	router = gin.Default()
 
 	NewMainHandler(&Config{
-		Router:           router,
-		BasePath:         "bayeos-api",
-		UserService:      service.NewUserService(sqlRepo, &LDAPMock{}),
-		NodeService:      newTestNodeService(),
-		NodeTokenService: service.NewNodeTokenService(sqlRepo),
-		NodePrivService:  service.NewNodePrivService(sqlRepo),
-		UserGroupService: service.NewUserGroupService(sqlRepo),
-		IDTokenService:   IDTokenService,
+		Router:            router,
+		BasePath:          "bayeos-api",
+		UserService:       service.NewUserService(sqlRepo, &LDAPMock{}),
+		NodeService:       newTestNodeService(),
+		NodeTokenService:  service.NewNodeTokenService(sqlRepo),
+		NodePrivService:   service.NewNodePrivService(sqlRepo),
+		UserGroupService:  service.NewUserGroupService(sqlRepo),
+		IDTokenService:    IDTokenService,
+		NodeAccessFactory: service.NewNodeAccessFactory(sqlRepo),
 	})
 	log.Println("test up")
 

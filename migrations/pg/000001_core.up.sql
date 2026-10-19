@@ -19,7 +19,8 @@ create table node_token (
         id serial primary key,
         node_id int not null,
         active bool default true,
-        token uuid not null
+        token uuid not null,
+        permission int not null default 7 check (permission between 0 and 7)
 );
 
 

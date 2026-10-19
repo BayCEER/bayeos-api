@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/BayCEER/bayeos/bayeos-api/model"
@@ -73,16 +74,35 @@ func TestPaginateHitsMatchesPerNodeLoop(t *testing.T) {
 	}
 }
 
-// A super user's hits must carry full permission, since that is what the
-// skipped per-node lookup would have stamped.
-func TestPaginateHitsStampsFullPermission(t *testing.T) {
+// fixedAccess is a model.NodeAccess that reports the same permission for every
+// node, so readableNodes can be exercised without a repository.
+type fixedAccess struct {
+	perm uint8
+	err  error
+}
+
+func (a fixedAccess) Permission(context.Context, int32) (uint8, error) { return a.perm, a.err }
+
+// readableNodes is what stamps permission now, so a subject holding full
+// permission must see every hit annotated with it.
+func TestReadableNodesStampsPermission(t *testing.T) {
 	t.Parallel()
 
-	got := paginateHits(hits(3), 0, 10)
+	got, err := (&nodeService{}).readableNodes(context.Background(), hits(3), fixedAccess{perm: model.FULL_PERMISSION})
+	require.NoError(t, err)
 	require.Len(t, got, 3)
 	for i, n := range got {
 		assert.Equal(t, model.FULL_PERMISSION, n.Permission, "hit %d should carry full permission", i)
 	}
+}
+
+// A subject that may not read a node must not see it at all.
+func TestReadableNodesDropsUnreadable(t *testing.T) {
+	t.Parallel()
+
+	got, err := (&nodeService{}).readableNodes(context.Background(), hits(3), fixedAccess{perm: 0})
+	require.NoError(t, err)
+	assert.Empty(t, got)
 }
 
 // The returned window aliases the input slice, so mutating a hit must not be

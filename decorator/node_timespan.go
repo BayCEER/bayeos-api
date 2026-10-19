@@ -144,17 +144,19 @@ type timeSpanService struct {
 	cfg TimeSpanConfig
 }
 
+var _ service.NodeService = (*timeSpanService)(nil)
+
 // CreateNode registers the new node in the span tree. A new node holds no
 // measurements yet, so the span service needs no re-aggregation here. A computed
 // marker in the body is still refused: this decorator is what produces them, so
 // it is the right place to catch an echoed read.
-func (s *timeSpanService) CreateNode(ctx context.Context, node *model.Node, userID int32) error {
+func (s *timeSpanService) CreateNode(ctx context.Context, node *model.Node, access model.NodeAccess) error {
 	if node != nil {
 		if err := rejectComputedMetadata(node.Metadata.Map()); err != nil {
 			return err
 		}
 	}
-	if err := s.NodeService.CreateNode(ctx, node, userID); err != nil {
+	if err := s.NodeService.CreateNode(ctx, node, access); err != nil {
 		return err
 	}
 	if node == nil {
@@ -170,13 +172,13 @@ func (s *timeSpanService) CreateNode(ctx context.Context, node *model.Node, user
 // CreateNodeByPath is not tracked incrementally: the intermediate folders
 // created along the path are not returned by the service, so their ids are
 // unknown. The next refresh picks them up.
-func (s *timeSpanService) CreateNodeByPath(ctx context.Context, node *model.Node, baseNodeID int32, path string, userID int32) error {
+func (s *timeSpanService) CreateNodeByPath(ctx context.Context, node *model.Node, baseNodeID int32, path string, access model.NodeAccess) error {
 	if node != nil {
 		if err := rejectComputedMetadata(node.Metadata.Map()); err != nil {
 			return err
 		}
 	}
-	return s.NodeService.CreateNodeByPath(ctx, node, baseNodeID, path, userID)
+	return s.NodeService.CreateNodeByPath(ctx, node, baseNodeID, path, access)
 }
 
 // UpdateNode treats a parent_id change as a move, which changes which ancestors

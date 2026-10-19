@@ -20,9 +20,13 @@ type enriched struct {
 	enrichers []enricher
 }
 
+// Compile-time proof that a signature change to NodeService cannot silently turn
+// an override into a distinct method promoted from the embedded interface.
+var _ service.NodeService = (*enriched)(nil)
+
 // GetNode implements service.NodeService.
-func (e *enriched) GetNode(ctx context.Context, id int32, userID int32) (model.Node, error) {
-	n, err := e.NodeService.GetNode(ctx, id, userID)
+func (e *enriched) GetNode(ctx context.Context, id int32, access model.NodeAccess) (model.Node, error) {
+	n, err := e.NodeService.GetNode(ctx, id, access)
 	if err != nil {
 		return n, err
 	}
@@ -31,8 +35,8 @@ func (e *enriched) GetNode(ctx context.Context, id int32, userID int32) (model.N
 }
 
 // GetNodes implements service.NodeService.
-func (e *enriched) GetNodes(ctx context.Context, ids []int32, userID int32) ([]model.Node, error) {
-	nodes, err := e.NodeService.GetNodes(ctx, ids, userID)
+func (e *enriched) GetNodes(ctx context.Context, ids []int32, access model.NodeAccess) ([]model.Node, error) {
+	nodes, err := e.NodeService.GetNodes(ctx, ids, access)
 	if err != nil {
 		return nodes, err
 	}
@@ -41,8 +45,8 @@ func (e *enriched) GetNodes(ctx context.Context, ids []int32, userID int32) ([]m
 }
 
 // GetNodeChildren implements service.NodeService.
-func (e *enriched) GetNodeChildren(ctx context.Context, id int32, userID int32) ([]model.Node, error) {
-	nodes, err := e.NodeService.GetNodeChildren(ctx, id, userID)
+func (e *enriched) GetNodeChildren(ctx context.Context, id int32, access model.NodeAccess) ([]model.Node, error) {
+	nodes, err := e.NodeService.GetNodeChildren(ctx, id, access)
 	if err != nil {
 		return nodes, err
 	}
@@ -51,8 +55,8 @@ func (e *enriched) GetNodeChildren(ctx context.Context, id int32, userID int32) 
 }
 
 // GetNodeParents implements service.NodeService.
-func (e *enriched) GetNodeParents(ctx context.Context, id int32, userID int32) ([]model.Node, error) {
-	nodes, err := e.NodeService.GetNodeParents(ctx, id, userID)
+func (e *enriched) GetNodeParents(ctx context.Context, id int32, access model.NodeAccess) ([]model.Node, error) {
+	nodes, err := e.NodeService.GetNodeParents(ctx, id, access)
 	if err != nil {
 		return nodes, err
 	}
@@ -61,8 +65,8 @@ func (e *enriched) GetNodeParents(ctx context.Context, id int32, userID int32) (
 }
 
 // FindNodesByAntPath implements service.NodeService.
-func (e *enriched) FindNodesByAntPath(ctx context.Context, pattern string, kind string, skip int, limit int, userID int32) (int32, []model.Node, error) {
-	total, nodes, err := e.NodeService.FindNodesByAntPath(ctx, pattern, kind, skip, limit, userID)
+func (e *enriched) FindNodesByAntPath(ctx context.Context, pattern string, kind string, skip int, limit int, access model.NodeAccess) (int32, []model.Node, error) {
+	total, nodes, err := e.NodeService.FindNodesByAntPath(ctx, pattern, kind, skip, limit, access)
 	if err != nil {
 		return total, nodes, err
 	}

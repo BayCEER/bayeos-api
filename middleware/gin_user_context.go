@@ -17,7 +17,22 @@ const (
 	CtxNodeID = "NodeID"
 	// CtxNode is reserved for a node entity in the context.
 	CtxNode = "Node"
+	// CtxNodeAccess is the model.NodeAccess resolved from the request principal
+	// (user or node token). Permission middleware and handlers read it instead
+	// of deriving a user id.
+	CtxNodeAccess = "NodeAccess"
 )
+
+// NodeAccessFromContext returns the model.NodeAccess stored by the auth
+// middleware. The bool reports whether a well-typed access subject is present.
+func NodeAccessFromContext(c *gin.Context) (model.NodeAccess, bool) {
+	v, ok := c.Get(CtxNodeAccess)
+	if !ok {
+		return nil, false
+	}
+	a, ok := v.(model.NodeAccess)
+	return a, ok
+}
 
 // UserFromContext returns the authenticated user stored by AuthUser. The bool
 // reports whether a well-typed user is present.

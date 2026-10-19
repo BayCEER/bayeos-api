@@ -16,6 +16,7 @@ post:
     Existing data points with the same timestamp will be overwritten.
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   parameters:
     - name: ignore_invalid_timestamps
       in: query
@@ -46,6 +47,7 @@ get:
   summary: Query data points of a timeseries
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   parameters:
     - name: from
       in: query

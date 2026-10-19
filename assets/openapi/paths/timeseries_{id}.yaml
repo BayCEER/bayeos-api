@@ -11,6 +11,7 @@ get:
   summary: Get a timeseries by id
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   responses:
     "200":
       description: ok
@@ -31,6 +32,7 @@ patch:
   description: Partial update, only send the fields to change.
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   requestBody:
     content:
       application/json:
@@ -49,6 +51,7 @@ delete:
   description: Removes the node and its QuestDB data.
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   responses:
     "200":
       description: deleted

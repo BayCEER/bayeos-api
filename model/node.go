@@ -39,6 +39,7 @@ type NodeToken struct {
 	DisplayName string    `db:"display_name" json:"display_name"`
 	Active      bool      `db:"active" json:"active"`
 	Token       uuid.UUID `db:"token" json:"token"`
+	Permission  uint8     `db:"permission" json:"permission"`
 }
 
 type NodeSearch struct {
@@ -62,7 +63,12 @@ func NewNodePrivilege(nodeID int32, grantorID int32, granteeID int32) NodePrivil
 	return NodePrivilege{NodeID: nodeID, GrantorID: grantorID, GranteeID: null.IntFrom(int64(granteeID)), Permission: FULL_PERMISSION}
 }
 
-func NewNodeToken(nodeID int32) NodeToken {
+// NewNodeToken creates a token for nodeID carrying the given permission bits
+// (0-7). Callers that do not vary the permission should pass FULL_PERMISSION.
+func NewNodeToken(nodeID int32, permission uint8) NodeToken {
 	uu, _ := uuid.NewRandom()
-	return NodeToken{NodeID: nodeID, Token: uu}
+	if permission > FULL_PERMISSION {
+		permission = FULL_PERMISSION
+	}
+	return NodeToken{NodeID: nodeID, Token: uu, Permission: permission}
 }

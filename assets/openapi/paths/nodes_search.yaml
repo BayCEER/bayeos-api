@@ -30,6 +30,7 @@ get:
     Optionally filter by `kind` (omit to match all kinds).
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   parameters:
     - name: pattern
       in: query

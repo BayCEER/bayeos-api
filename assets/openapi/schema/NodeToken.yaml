@@ -12,6 +12,11 @@ properties:
     type: string
   active:
     type: boolean
+  permission:
+    type: integer
+    minimum: 0
+    maximum: 7
+    description: "Permission bitmask: 4=read, 2=write, 1=grant. Defaults to 7 (full) on creation. A token acts on its node and the whole subtree below it."
   token:
     type: string
     format: uuid
@@ -20,4 +25,5 @@ example:
   node_id: 1
   display_name: "sensor-token"
   active: true
+  permission: 7
   token: "79a7632b-ef7c-410a-953f-dda8f80b6979"

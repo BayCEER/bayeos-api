@@ -29,9 +29,9 @@ type tracer struct {
 	order *[]string
 }
 
-func (t *tracer) GetNode(ctx context.Context, id int32, userID int32) (model.Node, error) {
+func (t *tracer) GetNode(ctx context.Context, id int32, access model.NodeAccess) (model.Node, error) {
 	*t.order = append(*t.order, "enter:"+t.name)
-	n, err := t.NodeService.GetNode(ctx, id, userID)
+	n, err := t.NodeService.GetNode(ctx, id, access)
 	*t.order = append(*t.order, "exit:"+t.name)
 	return n, err
 }
@@ -49,7 +49,7 @@ func TestChain(t *testing.T) {
 		base := &stubNode{node: newNode(1, "Folder", nil)}
 
 		svc := Chain(base, wrapOnly("a", &order), wrapOnly("b", &order))
-		_, err := svc.GetNode(ctx, 1, 1)
+		_, err := svc.GetNode(ctx, 1, anyAccess)
 
 		require.NoError(t, err)
 		// The first declared decorator is the outermost layer.
@@ -69,7 +69,7 @@ func TestChain(t *testing.T) {
 		}}
 
 		svc := Chain(base, first, second)
-		n, err := svc.GetNode(ctx, 1, 1)
+		n, err := svc.GetNode(ctx, 1, anyAccess)
 
 		require.NoError(t, err)
 		md := mdOf(n)
@@ -82,7 +82,7 @@ func TestChain(t *testing.T) {
 		var order []string
 
 		svc := Chain(base, wrapOnly("a", &order))
-		n, err := svc.GetNode(ctx, 1, 1)
+		n, err := svc.GetNode(ctx, 1, anyAccess)
 
 		require.NoError(t, err)
 		assert.Equal(t, map[string]any{"unit": "C"}, mdOf(n))
@@ -97,7 +97,7 @@ func TestChain(t *testing.T) {
 			Enrich: func(_ context.Context, v *View) { v.Metadata()["k"] = "v" },
 		}, wrapOnly("a", &order))
 
-		n, err := svc.GetNode(ctx, 1, 1)
+		n, err := svc.GetNode(ctx, 1, anyAccess)
 		require.NoError(t, err)
 		assert.Equal(t, "v", mdOf(n)["k"])
 		assert.Equal(t, []string{"enter:a", "exit:a"}, order)
@@ -111,7 +111,7 @@ func TestChain(t *testing.T) {
 			Enrich: func(_ context.Context, v *View) { v.Metadata()["k"] = "v" },
 		})
 
-		n, err := svc.GetNode(ctx, 1, 1)
+		n, err := svc.GetNode(ctx, 1, anyAccess)
 		require.NoError(t, err)
 		// Not even a commit happens, so the payload is byte-for-byte identical.
 		assert.Equal(t, map[string]any{"unit": "C"}, mdOf(n))
@@ -129,7 +129,7 @@ func TestChain(t *testing.T) {
 			Enrich: func(_ context.Context, v *View) { v.Metadata()["after"] = true },
 		})
 
-		n, err := svc.GetNode(ctx, 1, 1)
+		n, err := svc.GetNode(ctx, 1, anyAccess)
 
 		require.NoError(t, err, "enrich is fail-open")
 		assert.Equal(t, int32(1), n.ID)
@@ -143,10 +143,10 @@ func TestChain(t *testing.T) {
 			Enrich: func(_ context.Context, v *View) { v.Metadata()["k"] = "v" },
 		})
 
-		_, err := svc.GetNode(ctx, 1, 1)
+		_, err := svc.GetNode(ctx, 1, anyAccess)
 		require.Error(t, err)
 
-		nodes, err := svc.GetNodes(ctx, nil, 1)
+		nodes, err := svc.GetNodes(ctx, nil, anyAccess)
 		require.Error(t, err)
 		assert.Nil(t, nodes)
 	})
@@ -156,14 +156,14 @@ func TestChain(t *testing.T) {
 
 		t.Run("GetNode", func(t *testing.T) {
 			svc := Chain(&stubNode{node: newNode(7, "Folder", nil)}, Decorator{Enrich: enrich})
-			n, err := svc.GetNode(ctx, 7, 1)
+			n, err := svc.GetNode(ctx, 7, anyAccess)
 			require.NoError(t, err)
 			assert.EqualValues(t, 7, mdOf(n)["seen"])
 		})
 
 		t.Run("GetNodes", func(t *testing.T) {
 			svc := Chain(&stubNode{nodes: []model.Node{newNode(1, "Folder", nil), newNode(2, "Folder", nil)}}, Decorator{Enrich: enrich})
-			nodes, err := svc.GetNodes(ctx, nil, 1)
+			nodes, err := svc.GetNodes(ctx, nil, anyAccess)
 			require.NoError(t, err)
 			require.Len(t, nodes, 2)
 			assert.EqualValues(t, 1, mdOf(nodes[0])["seen"])
@@ -172,14 +172,14 @@ func TestChain(t *testing.T) {
 
 		t.Run("GetNodeChildren", func(t *testing.T) {
 			svc := Chain(&stubNode{nodes: []model.Node{newNode(3, "Folder", nil)}}, Decorator{Enrich: enrich})
-			nodes, err := svc.GetNodeChildren(ctx, 3, 1)
+			nodes, err := svc.GetNodeChildren(ctx, 3, anyAccess)
 			require.NoError(t, err)
 			assert.EqualValues(t, 3, mdOf(nodes[0])["seen"])
 		})
 
 		t.Run("GetNodeParents", func(t *testing.T) {
 			svc := Chain(&stubNode{nodes: []model.Node{newNode(4, "Folder", nil)}}, Decorator{Enrich: enrich})
-			nodes, err := svc.GetNodeParents(ctx, 4, 1)
+			nodes, err := svc.GetNodeParents(ctx, 4, anyAccess)
 			require.NoError(t, err)
 			assert.EqualValues(t, 4, mdOf(nodes[0])["seen"])
 		})
@@ -191,7 +191,7 @@ func TestChain(t *testing.T) {
 			}
 			svc := Chain(base, Decorator{Enrich: enrich})
 
-			total, nodes, err := svc.FindNodesByAntPath(ctx, "**", "Timeseries", 0, 10, 1)
+			total, nodes, err := svc.FindNodesByAntPath(ctx, "**", "Timeseries", 0, 10, anyAccess)
 			require.NoError(t, err)
 			assert.EqualValues(t, 1, total)
 			require.Len(t, nodes, 1)

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/BayCEER/bayeos/bayeos-api/model"
-	"github.com/google/uuid"
 )
 
 func (r *SqlRepo) FindNodeByID(ctx context.Context, ID int32) (model.Node, error) {
@@ -226,16 +225,20 @@ func (r *SqlRepo) FindNodeByPath(ctx context.Context, path string) (model.Node, 
 	return n, nil
 }
 
-func (r *SqlRepo) FindNodeByToken(ctx context.Context, token uuid.UUID) (model.Node, error) {
-	n := model.Node{}
-	stmt := `SELECT n.id, n.display_name, n.kind, coalesce(n.parent_id,0) as parent_id, (path).path as node_path, n.created_at, coalesce(n.metadata, '{}') as metadata FROM node n join node_token t on n.id = t.node_id WHERE t.token = $1`
+// IsNodeInSubtree reports whether nodeID is ancestorID or a descendant of it.
+// It relies on the materialized node_path: (path).ids lists the id of every
+// node on the path from the root down to the node, so a single containment
+// check answers the question without a recursive walk.
+func (r *SqlRepo) IsNodeInSubtree(ctx context.Context, ancestorID int32, nodeID int32) (bool, error) {
+	var in bool
+	stmt := `SELECT $1 = ANY((path).ids) FROM node WHERE id = $2`
 	c, span := withQuerySpan(ctx, stmt)
-	err := r.trans.GetContext(c, &n, stmt, token)
+	err := r.trans.GetContext(c, &in, stmt, ancestorID, nodeID)
 	endQuerySpan(span, err)
 	if err != nil {
-		return n, err
+		return false, err
 	}
-	return n, nil
+	return in, nil
 }
 
 func (r *SqlRepo) FindOrCreateNodesByPath(ctx context.Context, startNodeID int32, path string, leafKind string) (model.Node, error) {

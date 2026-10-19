@@ -125,6 +125,8 @@ type inheritedService struct {
 	cfg InheritedConfig
 }
 
+var _ service.NodeService = (*inheritedService)(nil)
+
 // UpdateNode rejects a body carrying the inherited marker, then treats a
 // parent_id change as a move and a metadata change as a local value change.
 func (s *inheritedService) UpdateNode(ctx context.Context, id int32, fields *map[string]any) error {
@@ -182,13 +184,13 @@ func (s *inheritedService) UpdateNodeMetadata(ctx context.Context, id int32, met
 // anything a client could have observed. A marker in the body is refused here
 // for the same reason updates refuse one, even though the repository would
 // strip it anyway.
-func (s *inheritedService) CreateNode(ctx context.Context, node *model.Node, userID int32) error {
+func (s *inheritedService) CreateNode(ctx context.Context, node *model.Node, access model.NodeAccess) error {
 	if node != nil {
 		if err := rejectComputedMetadata(node.Metadata.Map()); err != nil {
 			return err
 		}
 	}
-	if err := s.NodeService.CreateNode(ctx, node, userID); err != nil {
+	if err := s.NodeService.CreateNode(ctx, node, access); err != nil {
 		return err
 	}
 	if node == nil {
@@ -208,13 +210,13 @@ func (s *inheritedService) CreateNode(ctx context.Context, node *model.Node, use
 // CreateNodeByPath is not tracked incrementally: the intermediate folders
 // created along the path are not returned by the service, so their ids are
 // unknown. The next refresh picks them up.
-func (s *inheritedService) CreateNodeByPath(ctx context.Context, node *model.Node, baseNodeID int32, path string, userID int32) error {
+func (s *inheritedService) CreateNodeByPath(ctx context.Context, node *model.Node, baseNodeID int32, path string, access model.NodeAccess) error {
 	if node != nil {
 		if err := rejectComputedMetadata(node.Metadata.Map()); err != nil {
 			return err
 		}
 	}
-	return s.NodeService.CreateNodeByPath(ctx, node, baseNodeID, path, userID)
+	return s.NodeService.CreateNodeByPath(ctx, node, baseNodeID, path, access)
 }
 
 // DeleteNodesByIDs passes the whole id set to the property service, which

@@ -12,8 +12,10 @@ type authHeader struct {
 	Token string `header:"Authorization"`
 }
 
-// Add user from token to context
-func AuthUser(s service.IDTokenService) gin.HandlerFunc {
+// AuthUser validates the Bearer ID token, stores the user and the matching
+// model.NodeAccess in the context. It is the user-only counterpart of
+// AuthUserOrNodeToken.
+func AuthUser(s service.IDTokenService, f AccessFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		h := authHeader{}
 		if err := c.ShouldBindHeader(&h); err != nil {
@@ -31,6 +33,7 @@ func AuthUser(s service.IDTokenService) gin.HandlerFunc {
 			return
 		}
 		c.Set(CtxAuthUser, user)
+		c.Set(CtxNodeAccess, f.ForUser(user.ID))
 		c.Next()
 	}
 

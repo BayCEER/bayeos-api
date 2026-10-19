@@ -13,6 +13,7 @@ post:
     is written.
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   requestBody:
     required: true
     content:
@@ -85,6 +86,7 @@ get:
     are returned; unknown or non-readable ids are skipped.
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   parameters:
     - name: ids
       in: query

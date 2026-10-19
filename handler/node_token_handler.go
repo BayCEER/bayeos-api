@@ -9,7 +9,6 @@ import (
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/BayCEER/bayeos/bayeos-api/strings"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 func (h *Handler) GetNodeTokens(c *gin.Context) {
@@ -48,10 +47,16 @@ func (h *Handler) CreateNodeToken(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "invalid query parameter")
 		return
 	} else {
-		// Empty body !
-		nt := model.NodeToken{}
-		nt.NodeID = id
-		nt.Token = uuid.New()
+		// Optional body: {"permission": <0-7>}. Absent means full permission.
+		var body struct {
+			Permission *uint8 `json:"permission"`
+		}
+		_ = c.ShouldBindJSON(&body)
+		permission := model.FULL_PERMISSION
+		if body.Permission != nil {
+			permission = *body.Permission
+		}
+		nt := model.NewNodeToken(id, permission)
 		if err := h.NodeTokenService.CreateNodeToken(c.Request.Context(), &nt); err != nil {
 			mw.AbortWithInternalError(c, "Failed to create node token")
 			return

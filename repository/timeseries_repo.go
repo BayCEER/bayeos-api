@@ -83,6 +83,7 @@ func (r *questRepo) InsertBatch(ctx context.Context, series []model.SeriesData) 
 	defer span.End()
 
 	batch := &pgx.Batch{}
+	queued := 0
 	for _, s := range series {
 		if len(s.Status) > 0 && len(s.Status) != len(s.Ts) {
 			return fmt.Errorf("series %d: status must have the same length as ts", s.ID)
@@ -98,14 +99,15 @@ func (r *questRepo) InsertBatch(ctx context.Context, series []model.SeriesData) 
 				"INSERT INTO series (id, ts, value, status) VALUES ($1, $2, $3, $4)",
 				fmt.Sprintf("%d", s.ID), s.Ts[i], s.Values[i], status,
 			)
+			queued++
 		}
 	}
-	if batch.Len() == 0 {
+	if queued == 0 {
 		return nil
 	}
 	br := r.conn.SendBatch(ctx, batch)
 	defer br.Close()
-	for batch.Len() > 0 {
+	for i := 0; i < queued; i++ {
 		if _, err := br.Exec(); err != nil {
 			return err
 		}

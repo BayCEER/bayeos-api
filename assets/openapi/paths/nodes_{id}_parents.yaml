@@ -4,6 +4,7 @@ get:
   summary: Get all parents of a node
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   parameters:
     - name: id
       in: path

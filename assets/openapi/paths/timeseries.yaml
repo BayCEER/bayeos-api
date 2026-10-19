@@ -5,6 +5,7 @@ post:
   description: Creates a timeseries node. Requires WRITE permission on the parent node.
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   requestBody:
     content:
       application/json:

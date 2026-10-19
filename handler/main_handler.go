@@ -21,6 +21,7 @@ type Handler struct {
 	UserGroupService  service.UserGroupService
 	ChartService      service.ChartService
 	TimeseriesService service.TimeseriesService
+	NodeAccessFactory service.NodeAccessFactory
 }
 
 type Config struct {
@@ -38,6 +39,7 @@ type Config struct {
 	UserGroupService  service.UserGroupService
 	ChartService      service.ChartService
 	TimeseriesService service.TimeseriesService
+	NodeAccessFactory service.NodeAccessFactory
 
 	Tracer trace.Tracer
 
@@ -58,6 +60,7 @@ func NewMainHandler(c *Config) {
 		UserGroupService:  c.UserGroupService,
 		ChartService:      c.ChartService,
 		TimeseriesService: c.TimeseriesService,
+		NodeAccessFactory: c.NodeAccessFactory,
 	}
 
 	r := c.Router
@@ -74,7 +77,10 @@ func NewMainHandler(c *Config) {
 	r.POST(base+"/auth/signup", h.SignUp)
 
 	// Secured by AuthUser middleware, which validates the ID token and adds the user to the context.
-	sec := r.Group(base).Use(m.AuthUser(c.IDTokenService), m.TraceUser())
+	sec := r.Group(base).Use(m.AuthUser(c.IDTokenService, c.NodeAccessFactory), m.TraceUser())
+	// nodeSec additionally accepts a Node-Token header in place of the Bearer
+	// token, so node and timeseries routes can be used by both users and tokens.
+	nodeSec := r.Group(base).Use(m.AuthUserOrNodeToken(c.IDTokenService, c.NodeTokenService, c.NodeAccessFactory), m.TraceUser())
 	sec.PUT("/auth/refresh", h.RefreshIDToken)
 	sec.PUT("/auth/password", h.SetPassword)
 	sec.POST("/auth/signout", h.SignOut)
@@ -108,19 +114,22 @@ func NewMainHandler(c *Config) {
 
 	sec.GET("/usergroups/:id/privileges", m.AuthSuper(), h.GetUserGroupPrivileges)
 
-	// Node
-	sec.GET("/nodes/search", h.SearchNodesByAntPath)
-	sec.GET("/nodes", h.GetNodes)
+	// Node (users and node tokens)
+	nodeSec.GET("/nodes/search", h.SearchNodesByAntPath)
+	nodeSec.GET("/nodes", h.GetNodes)
 
-	rwCheck := m.NodePermissionCheck(h.NodeService, mo.READ_PERMISSION+mo.WRITE_PERMISSION)
-	rwgCheck := m.NodePermissionCheck(h.NodeService, mo.FULL_PERMISSION)
+	rwCheck := m.NodePermissionCheck(mo.READ_PERMISSION + mo.WRITE_PERMISSION)
+	rwgCheck := m.NodePermissionCheck(mo.FULL_PERMISSION)
 
-	sec.POST("/nodes", m.ResolvePathOrIdFromBody("parent_id", "node_path", "NodeID"), rwCheck, h.CreateNode)
-	sec.GET("/nodes/:id/children", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeChildren)
-	sec.GET("/nodes/:id/parents", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeParents)
-	sec.GET("/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNode)
-	sec.PATCH("/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.UpdateNode)
-	sec.DELETE("/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteNode)
+	nodeSec.POST("/nodes", m.ResolvePathOrIdFromBody("parent_id", "node_path", "NodeID"), rwCheck, h.CreateNode)
+	nodeSec.GET("/nodes/:id/children", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeChildren)
+	nodeSec.GET("/nodes/:id/parents", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeParents)
+	nodeSec.GET("/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNode)
+	nodeSec.PATCH("/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.UpdateNode)
+	nodeSec.DELETE("/nodes/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteNode)
+
+	// Token and privilege management stay user-only: a node token must not be
+	// able to mint tokens or hand out privileges.
 	sec.GET("/nodes/:id/tokens", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeTokens)
 	sec.POST("/nodes/:id/tokens", m.IdFromPath("id", "NodeID"), rwCheck, h.CreateNodeToken)
 	sec.GET("/nodes/:id/tokens/:nid", m.IdFromPath("id", "NodeID"), rwCheck, h.GetNodeToken)
@@ -132,17 +141,17 @@ func NewMainHandler(c *Config) {
 	sec.PATCH("/nodes/:id/privileges/:pid", m.IdFromPath("id", "NodeID"), rwgCheck, h.UpdateNodePriv)
 	sec.DELETE("/nodes/:id/privileges/:pid", m.IdFromPath("id", "NodeID"), rwgCheck, h.DeleteNodePrivilege)
 
-	// Timeseries
-	sec.POST("/timeseries", m.ResolvePathOrIdFromBody("parent_id", "node_path", "NodeID"), rwCheck, h.CreateTimeseries)
-	sec.GET("/timeseries/data", h.QueryTimeseriesDataBatch)
-	sec.POST("/timeseries/data", h.AddTimeseriesDataBatch)
-	sec.GET("/timeseries/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.GetTimeseries)
-	sec.PATCH("/timeseries/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.UpdateTimeseries)
-	sec.DELETE("/timeseries/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteTimeseries)
-	sec.POST("/timeseries/:id/data", m.IdFromPath("id", "NodeID"), rwCheck, h.AddTimeseriesData)
-	sec.GET("/timeseries/:id/data", m.IdFromPath("id", "NodeID"), rwCheck, h.QueryTimeseriesData)
-	sec.GET("/timeseries/:id/stats", m.IdFromPath("id", "NodeID"), rwCheck, h.GetTimeseriesStats)
-	sec.GET("/timeseries/:id/gaps", m.IdFromPath("id", "NodeID"), rwCheck, h.GetTimeseriesGaps)
+	// Timeseries (users and node tokens)
+	nodeSec.POST("/timeseries", m.ResolvePathOrIdFromBody("parent_id", "node_path", "NodeID"), rwCheck, h.CreateTimeseries)
+	nodeSec.GET("/timeseries/data", h.QueryTimeseriesDataBatch)
+	nodeSec.POST("/timeseries/data", h.AddTimeseriesDataBatch)
+	nodeSec.GET("/timeseries/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.GetTimeseries)
+	nodeSec.PATCH("/timeseries/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.UpdateTimeseries)
+	nodeSec.DELETE("/timeseries/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteTimeseries)
+	nodeSec.POST("/timeseries/:id/data", m.IdFromPath("id", "NodeID"), rwCheck, h.AddTimeseriesData)
+	nodeSec.GET("/timeseries/:id/data", m.IdFromPath("id", "NodeID"), rwCheck, h.QueryTimeseriesData)
+	nodeSec.GET("/timeseries/:id/stats", m.IdFromPath("id", "NodeID"), rwCheck, h.GetTimeseriesStats)
+	nodeSec.GET("/timeseries/:id/gaps", m.IdFromPath("id", "NodeID"), rwCheck, h.GetTimeseriesGaps)
 
 	// Chart
 	sec.GET("/charts", h.GetCharts)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/BayCEER/bayeos/bayeos-api/model"
+	"github.com/google/uuid"
 )
 
 func (r *SqlRepo) FindNodeTokenByID(ctx context.Context, ID int32) (model.NodeToken, error) {
@@ -12,6 +13,18 @@ func (r *SqlRepo) FindNodeTokenByID(ctx context.Context, ID int32) (model.NodeTo
 	stmt := `SELECT * FROM node_token WHERE id=$1`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, &t, stmt, ID)
+	endQuerySpan(span, err)
+	return t, err
+}
+
+// FindActiveNodeTokenByValue returns the active token with the given value.
+// Inactive tokens are treated as unknown: callers must not distinguish them
+// from a token that never existed.
+func (r *SqlRepo) FindActiveNodeTokenByValue(ctx context.Context, token uuid.UUID) (model.NodeToken, error) {
+	var t model.NodeToken
+	stmt := `SELECT * FROM node_token WHERE token=$1 AND active`
+	c, span := withQuerySpan(ctx, stmt)
+	err := r.trans.GetContext(c, &t, stmt, token)
 	endQuerySpan(span, err)
 	return t, err
 }
@@ -29,10 +42,10 @@ func (r *SqlRepo) FindNodeTokensByNodeID(ctx context.Context, ID int32) ([]model
 }
 
 func (r *SqlRepo) CreateNodeToken(ctx context.Context, e *model.NodeToken) error {
-	stmt := `INSERT INTO node_token (node_id,token) VALUES ($1,$2) RETURNING *`
+	stmt := `INSERT INTO node_token (node_id,token,permission) VALUES ($1,$2,$3) RETURNING *`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, e, stmt,
-		e.NodeID, e.Token)
+		e.NodeID, e.Token, e.Permission)
 	endQuerySpan(span, err)
 	return err
 }

@@ -31,34 +31,32 @@ type stubNode struct {
 	lastDeleteIDs []int32
 }
 
-func (s *stubNode) GetNode(_ context.Context, _ int32, _ int32) (model.Node, error) {
+func (s *stubNode) GetNode(_ context.Context, _ int32, _ model.NodeAccess) (model.Node, error) {
 	s.calls = append(s.calls, "GetNode")
 	return s.node, s.err
 }
 
-func (s *stubNode) GetNodes(_ context.Context, _ []int32, _ int32) ([]model.Node, error) {
+func (s *stubNode) GetNodes(_ context.Context, _ []int32, _ model.NodeAccess) ([]model.Node, error) {
 	s.calls = append(s.calls, "GetNodes")
 	return s.nodes, s.err
 }
 
-func (s *stubNode) GetNodeChildren(_ context.Context, _ int32, _ int32) ([]model.Node, error) {
+func (s *stubNode) GetNodeChildren(_ context.Context, _ int32, _ model.NodeAccess) ([]model.Node, error) {
 	s.calls = append(s.calls, "GetNodeChildren")
 	return s.nodes, s.err
 }
 
-func (s *stubNode) GetNodeParents(_ context.Context, _ int32, _ int32) ([]model.Node, error) {
+func (s *stubNode) GetNodeParents(_ context.Context, _ int32, _ model.NodeAccess) ([]model.Node, error) {
 	s.calls = append(s.calls, "GetNodeParents")
 	return s.nodes, s.err
 }
 
-func (s *stubNode) FindNodesByAntPath(_ context.Context, _ string, _ string, _ int, _ int, _ int32) (int32, []model.Node, error) {
+func (s *stubNode) FindNodesByAntPath(_ context.Context, _ string, _ string, _ int, _ int, _ model.NodeAccess) (int32, []model.Node, error) {
 	s.calls = append(s.calls, "FindNodesByAntPath")
 	return s.total, s.nodes, s.err
 }
 
-
-
-func (s *stubNode) CreateNode(_ context.Context, node *model.Node, _ int32) error {
+func (s *stubNode) CreateNode(_ context.Context, node *model.Node, _ model.NodeAccess) error {
 	s.calls = append(s.calls, "CreateNode")
 	if s.err != nil {
 		return s.err
@@ -69,7 +67,7 @@ func (s *stubNode) CreateNode(_ context.Context, node *model.Node, _ int32) erro
 	return nil
 }
 
-func (s *stubNode) CreateNodeByPath(_ context.Context, _ *model.Node, _ int32, _ string, _ int32) error {
+func (s *stubNode) CreateNodeByPath(_ context.Context, _ *model.Node, _ int32, _ string, _ model.NodeAccess) error {
 	s.calls = append(s.calls, "CreateNodeByPath")
 	return s.err
 }
@@ -97,6 +95,16 @@ func (s *stubNode) DeleteNodesByIDs(_ context.Context, ids []int32) error {
 	s.lastDeleteIDs = ids
 	return s.err
 }
+
+// stubAccess is a model.NodeAccess that always reports the same permission.
+type stubAccess struct{ perm uint8 }
+
+func (a stubAccess) Permission(context.Context, int32) (uint8, error) { return a.perm, nil }
+
+// anyAccess is a full-permission subject for tests that do not exercise access.
+var anyAccess = stubAccess{perm: model.FULL_PERMISSION}
+
+var _ model.NodeAccess = stubAccess{}
 
 // newNode returns a node with the given id, kind and metadata.
 func newNode(id int32, kind string, md map[string]any) model.Node {

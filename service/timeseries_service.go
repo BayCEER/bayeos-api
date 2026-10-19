@@ -20,18 +20,18 @@ var ErrNoResolution = errors.New("node metadata requires a resolution value, or 
 // TimeseriesService exposes the plugin's operations on top of the shared node
 // tree and the QuestDB data repo.
 type TimeseriesService interface {
-	Create(ctx context.Context, cre model.TimeseriesCreate, baseNodeID int32, userID int32) (model.Node, error)
-	Get(ctx context.Context, id int32, userID int32) (model.Node, error)
-	Update(ctx context.Context, id int32, fields map[string]interface{}, userID int32) error
-	Delete(ctx context.Context, id int32, userID int32) error
+	Create(ctx context.Context, cre model.TimeseriesCreate, baseNodeID int32, access model.NodeAccess) (model.Node, error)
+	Get(ctx context.Context, id int32, access model.NodeAccess) (model.Node, error)
+	Update(ctx context.Context, id int32, fields map[string]interface{}, access model.NodeAccess) error
+	Delete(ctx context.Context, id int32, access model.NodeAccess) error
 
-	AddData(ctx context.Context, id int32, pts []model.DataPoint, userID int32, ignoreInvalid bool) error
-	AddDataBatch(ctx context.Context, series []model.SeriesData, userID int32, ignoreInvalid bool) error
+	AddData(ctx context.Context, id int32, pts []model.DataPoint, access model.NodeAccess, ignoreInvalid bool) error
+	AddDataBatch(ctx context.Context, series []model.SeriesData, access model.NodeAccess, ignoreInvalid bool) error
 
-	QueryData(ctx context.Context, id int32, q model.TimeseriesQuery, userID int32) (*model.TimeseriesData, error)
-	QueryDataBatch(ctx context.Context, q model.TimeseriesDataQuery, userID int32) (*model.TimeseriesBatchData, error)
-	GetStats(ctx context.Context, id int32, q model.TimeseriesStatsQuery, userID int32) (*model.TimeseriesStats, error)
-	GetGaps(ctx context.Context, id int32, q model.TimeseriesGapsQuery, userID int32) ([]model.GapInfo, error)
+	QueryData(ctx context.Context, id int32, q model.TimeseriesQuery, access model.NodeAccess) (*model.TimeseriesData, error)
+	QueryDataBatch(ctx context.Context, q model.TimeseriesDataQuery, access model.NodeAccess) (*model.TimeseriesBatchData, error)
+	GetStats(ctx context.Context, id int32, q model.TimeseriesStatsQuery, access model.NodeAccess) (*model.TimeseriesStats, error)
+	GetGaps(ctx context.Context, id int32, q model.TimeseriesGapsQuery, access model.NodeAccess) ([]model.GapInfo, error)
 }
 
 type timeseriesService struct {
@@ -45,10 +45,10 @@ func NewTimeseriesService(nodes NodeService, queries repository.QuestRepo) Times
 	return &timeseriesService{nodes: nodes, queries: queries}
 }
 
-func (s *timeseriesService) Create(ctx context.Context, cre model.TimeseriesCreate, baseNodeID int32, userID int32) (node model.Node, err error) {
+func (s *timeseriesService) Create(ctx context.Context, cre model.TimeseriesCreate, baseNodeID int32, access model.NodeAccess) (node model.Node, err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.create")
 	defer func() { endServiceSpan(span, err) }()
-	setUserID(span, userID)
+	setAccess(span, access)
 	setNodeID(span, baseNodeID)
 
 	node = model.Node{Kind: model.Kind}
@@ -68,7 +68,7 @@ func (s *timeseriesService) Create(ctx context.Context, cre model.TimeseriesCrea
 		if len(rel) > 0 && (rel[0] == '/' || rel[0] == '~') {
 			rel = rel[1:]
 		}
-		if err := s.nodes.CreateNodeByPath(ctx, &node, baseNodeID, rel, userID); err != nil {
+		if err := s.nodes.CreateNodeByPath(ctx, &node, baseNodeID, rel, access); err != nil {
 			return model.Node{}, err
 		}
 	} else {
@@ -76,10 +76,10 @@ func (s *timeseriesService) Create(ctx context.Context, cre model.TimeseriesCrea
 			return model.Node{}, fmt.Errorf("either path or parent_id is required")
 		}
 		node.ParentID = *cre.ParentID
-		if _, err := s.nodes.GetNode(ctx, node.ParentID, userID); err != nil {
+		if _, err := s.nodes.GetNode(ctx, node.ParentID, access); err != nil {
 			return model.Node{}, fmt.Errorf("parent node %d not found or not readable: %w", node.ParentID, err)
 		}
-		if err := s.nodes.CreateNode(ctx, &node, userID); err != nil {
+		if err := s.nodes.CreateNode(ctx, &node, access); err != nil {
 			return model.Node{}, err
 		}
 	}
@@ -92,13 +92,13 @@ func (s *timeseriesService) Create(ctx context.Context, cre model.TimeseriesCrea
 	return node, nil
 }
 
-func (s *timeseriesService) Get(ctx context.Context, id int32, userID int32) (n model.Node, err error) {
+func (s *timeseriesService) Get(ctx context.Context, id int32, access model.NodeAccess) (n model.Node, err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.get")
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
-	setUserID(span, userID)
+	setAccess(span, access)
 
-	n, err = s.nodes.GetNode(ctx, id, userID)
+	n, err = s.nodes.GetNode(ctx, id, access)
 	if err != nil {
 		return model.Node{}, err
 	}
@@ -108,13 +108,13 @@ func (s *timeseriesService) Get(ctx context.Context, id int32, userID int32) (n 
 	return n, nil
 }
 
-func (s *timeseriesService) Update(ctx context.Context, id int32, fields map[string]interface{}, userID int32) (err error) {
+func (s *timeseriesService) Update(ctx context.Context, id int32, fields map[string]interface{}, access model.NodeAccess) (err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.update")
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
-	setUserID(span, userID)
+	setAccess(span, access)
 
-	n, err := s.Get(ctx, id, userID)
+	n, err := s.Get(ctx, id, access)
 	if err != nil {
 		return err
 	}
@@ -122,13 +122,13 @@ func (s *timeseriesService) Update(ctx context.Context, id int32, fields map[str
 	return s.nodes.UpdateNode(ctx, id, &fields)
 }
 
-func (s *timeseriesService) Delete(ctx context.Context, id int32, userID int32) (err error) {
+func (s *timeseriesService) Delete(ctx context.Context, id int32, access model.NodeAccess) (err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.delete")
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
-	setUserID(span, userID)
+	setAccess(span, access)
 
-	if _, err := s.Get(ctx, id, userID); err != nil {
+	if _, err := s.Get(ctx, id, access); err != nil {
 		return err
 	}
 	// QuestDB does not support row-level DELETE. Series data is orphaned when
@@ -136,13 +136,13 @@ func (s *timeseriesService) Delete(ctx context.Context, id int32, userID int32) 
 	return s.nodes.DeleteNode(ctx, id)
 }
 
-func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []model.DataPoint, userID int32, ignoreInvalid bool) (err error) {
+func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []model.DataPoint, access model.NodeAccess, ignoreInvalid bool) (err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.add_data")
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
-	setUserID(span, userID)
+	setAccess(span, access)
 
-	if _, err := s.Get(ctx, id, userID); err != nil {
+	if _, err := s.Get(ctx, id, access); err != nil {
 		return err
 	}
 	if ignoreInvalid {
@@ -155,13 +155,13 @@ func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []model.D
 // series id is validated first (it must exist, be a readable Timeseries and
 // the caller must have permission); if any series fails the whole batch
 // errors out and nothing is written.
-func (s *timeseriesService) AddDataBatch(ctx context.Context, series []model.SeriesData, userID int32, ignoreInvalid bool) (err error) {
+func (s *timeseriesService) AddDataBatch(ctx context.Context, series []model.SeriesData, access model.NodeAccess, ignoreInvalid bool) (err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.add_data_batch")
 	defer func() { endServiceSpan(span, err) }()
-	setUserID(span, userID)
+	setAccess(span, access)
 
 	for _, srs := range series {
-		if _, err := s.Get(ctx, srs.ID, userID); err != nil {
+		if _, err := s.Get(ctx, srs.ID, access); err != nil {
 			return err
 		}
 	}
@@ -216,13 +216,13 @@ func filterInvalidSeries(series []model.SeriesData) []model.SeriesData {
 	return out
 }
 
-func (s *timeseriesService) QueryData(ctx context.Context, id int32, q model.TimeseriesQuery, userID int32) (data *model.TimeseriesData, err error) {
+func (s *timeseriesService) QueryData(ctx context.Context, id int32, q model.TimeseriesQuery, access model.NodeAccess) (data *model.TimeseriesData, err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.query")
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
-	setUserID(span, userID)
+	setAccess(span, access)
 
-	if _, err := s.Get(ctx, id, userID); err != nil {
+	if _, err := s.Get(ctx, id, access); err != nil {
 		return nil, err
 	}
 	tsType, err := normalizeTsType(q.TsType)
@@ -265,10 +265,10 @@ func (s *timeseriesService) QueryData(ctx context.Context, id int32, q model.Tim
 	return newTimeseriesData(q.SampleInterval, sampleFunc, series, tsType), nil
 }
 
-func (s *timeseriesService) QueryDataBatch(ctx context.Context, q model.TimeseriesDataQuery, userID int32) (data *model.TimeseriesBatchData, err error) {
+func (s *timeseriesService) QueryDataBatch(ctx context.Context, q model.TimeseriesDataQuery, access model.NodeAccess) (data *model.TimeseriesBatchData, err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.query_batch")
 	defer func() { endServiceSpan(span, err) }()
-	setUserID(span, userID)
+	setAccess(span, access)
 
 	tsType, err := normalizeTsType(q.TsType)
 	if err != nil {
@@ -287,7 +287,7 @@ func (s *timeseriesService) QueryDataBatch(ctx context.Context, q model.Timeseri
 	// non-readable ids are silently skipped rather than failing the whole batch.
 	readable := make([]int32, 0, len(q.IDs))
 	for _, id := range q.IDs {
-		if _, err := s.Get(ctx, id, userID); err == nil {
+		if _, err := s.Get(ctx, id, access); err == nil {
 			readable = append(readable, id)
 		}
 	}
@@ -362,13 +362,13 @@ func newTimeseriesData(interval, sampleFunc string, series []model.SeriesData, t
 	return data
 }
 
-func (s *timeseriesService) GetStats(ctx context.Context, id int32, q model.TimeseriesStatsQuery, userID int32) (stats *model.TimeseriesStats, err error) {
+func (s *timeseriesService) GetStats(ctx context.Context, id int32, q model.TimeseriesStatsQuery, access model.NodeAccess) (stats *model.TimeseriesStats, err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.get_stats")
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
-	setUserID(span, userID)
+	setAccess(span, access)
 
-	n, err := s.Get(ctx, id, userID)
+	n, err := s.Get(ctx, id, access)
 	if err != nil {
 		return nil, err
 	}
@@ -397,13 +397,13 @@ func (s *timeseriesService) GetStats(ctx context.Context, id int32, q model.Time
 // GetGaps returns the gaps of a timeseries detected on the raw series table.
 // The gap threshold defaults to twice the sampling period derived from the
 // node's resolution metadata and can be overridden with threshold_minutes.
-func (s *timeseriesService) GetGaps(ctx context.Context, id int32, q model.TimeseriesGapsQuery, userID int32) (gaps []model.GapInfo, err error) {
+func (s *timeseriesService) GetGaps(ctx context.Context, id int32, q model.TimeseriesGapsQuery, access model.NodeAccess) (gaps []model.GapInfo, err error) {
 	ctx, span := withServiceSpan(ctx, "timeseries.get_gaps")
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
-	setUserID(span, userID)
+	setAccess(span, access)
 
-	n, err := s.Get(ctx, id, userID)
+	n, err := s.Get(ctx, id, access)
 	if err != nil {
 		return nil, err
 	}

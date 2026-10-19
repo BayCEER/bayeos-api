@@ -1,18 +1,20 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/gin-gonic/gin"
 )
 
-type NodeAuthorizer interface {
-	HasPermission(ctx context.Context, nodeID int32, permission uint8, userID int32) (bool, error)
+// AccessFactory turns an authenticated principal into a model.NodeAccess. It is
+// declared here, where it is consumed, and implemented by the service layer.
+type AccessFactory interface {
+	ForUser(userID int32) model.NodeAccess
+	ForToken(nodeID int32, permission uint8) model.NodeAccess
 }
 
-func NodePermissionCheck(a NodeAuthorizer, perm uint8) gin.HandlerFunc {
+func NodePermissionCheck(perm uint8) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		var p uint8
@@ -24,7 +26,7 @@ func NodePermissionCheck(a NodeAuthorizer, perm uint8) gin.HandlerFunc {
 			p = p + model.GRANT_PERMISSION
 		}
 
-		userID, exists := AuthUserIDFromContext(c)
+		access, exists := NodeAccessFromContext(c)
 		if !exists {
 			AbortWithUnauthorizedError(c, "Unauthenticated")
 			return
@@ -36,13 +38,13 @@ func NodePermissionCheck(a NodeAuthorizer, perm uint8) gin.HandlerFunc {
 			return
 		}
 
-		b, err := a.HasPermission(c.Request.Context(), nodeID, p, userID)
+		bits, err := access.Permission(c.Request.Context(), nodeID)
 		if err != nil {
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 
-		if !b {
+		if !model.HasPermission(bits, p) {
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}

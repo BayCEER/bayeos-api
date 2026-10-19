@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -37,4 +38,15 @@ func setNodeID(span trace.Span, id int32) {
 // setUserID records the acting user id on the span.
 func setUserID(span trace.Span, id int32) {
 	span.SetAttributes(attribute.Int64("bayeos.user_id", int64(id)))
+}
+
+// setAccess records the acting subject on the span. A user subject is recorded
+// as bayeos.user_id; a node-token subject has no user id and is marked with
+// bayeos.node_token instead.
+func setAccess(span trace.Span, access model.NodeAccess) {
+	if u, ok := access.(model.UserScoped); ok {
+		span.SetAttributes(attribute.Int64("bayeos.user_id", int64(u.UserID())))
+		return
+	}
+	span.SetAttributes(attribute.Bool("bayeos.node_token", true))
 }

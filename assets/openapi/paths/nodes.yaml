@@ -5,6 +5,7 @@ get:
   description: Get nodes, optionally filtered by id; only readable nodes are returned
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   parameters:
     - name: ids
       in: query
@@ -37,6 +38,7 @@ post:
   summary: Create a new node
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   requestBody:
     content:
       application/json:

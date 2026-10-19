@@ -200,7 +200,7 @@ func TestTimeSpanWrites(t *testing.T) {
 		svc := Chain(base2, TimeSpan(TimeSpanConfig{Span: span, SyncWrites: true}))
 
 		n := newNode(7, "Timeseries", nil)
-		require.NoError(t, svc.CreateNode(ctx, &n, 1))
+		require.NoError(t, svc.CreateNode(ctx, &n, anyAccess))
 
 		// The base service assigned the id the decorator then registered.
 		first, _, ok := span.GetTimeSpan(7)
@@ -215,7 +215,7 @@ func TestTimeSpanWrites(t *testing.T) {
 		svc := Chain(base2, TimeSpan(TimeSpanConfig{Span: span, SyncWrites: true}))
 
 		n := newNode(7, "Timeseries", nil)
-		require.Error(t, svc.CreateNode(ctx, &n, 1))
+		require.Error(t, svc.CreateNode(ctx, &n, anyAccess))
 
 		_, _, ok := span.GetTimeSpan(7)
 		assert.False(t, ok, "a node that was never persisted must not enter the tree")

@@ -11,6 +11,7 @@ get:
   summary: Get a node by id
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   responses:
     "200":
       description: ok
@@ -28,6 +29,7 @@ patch:
   description: Partial update, only send the fields to change; omitted fields are left unchanged.
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   requestBody:
     content:
       application/json:
@@ -45,6 +47,7 @@ delete:
   summary: Delete a node by id
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   responses:
     "200":
       description: deleted

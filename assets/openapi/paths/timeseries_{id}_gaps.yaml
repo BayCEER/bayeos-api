@@ -23,6 +23,7 @@ get:
     (default 20).
   security:
     - JWTAuth: []
+    - NodeTokenAuth: []
   parameters:
     - name: from
       in: query

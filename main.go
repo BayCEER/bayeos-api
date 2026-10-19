@@ -267,6 +267,7 @@ func main() {
 		UserGroupService:  userGroupService,
 		ChartService:      chartService,
 		TimeseriesService: timeseriesService,
+		NodeAccessFactory: service.NewNodeAccessFactory(sqlRepo),
 
 		SqlDB:  pg,
 		Tracer: otel.Tracer(serviceName),

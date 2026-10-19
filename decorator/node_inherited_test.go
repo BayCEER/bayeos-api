@@ -58,7 +58,7 @@ func TestInheritedPropsMergesAndMarks(t *testing.T) {
 	base := &stubNode{node: newNode(2, model.KindTimeseries, map[string]any{"lat": 1.0})}
 	svc := inheritedChain(props, base)
 
-	n, err := svc.GetNode(context.Background(), 2, 7)
+	n, err := svc.GetNode(context.Background(), 2, anyAccess)
 	require.NoError(t, err)
 
 	md := mdOf(n)
@@ -76,7 +76,7 @@ func TestInheritedPropsDoesNotOverwriteLocalValue(t *testing.T) {
 	base := &stubNode{node: newNode(2, model.KindTimeseries, map[string]any{"unit": "V"})}
 	svc := inheritedChain(props, base)
 
-	n, err := svc.GetNode(context.Background(), 2, 7)
+	n, err := svc.GetNode(context.Background(), 2, anyAccess)
 	require.NoError(t, err)
 
 	md := mdOf(n)
@@ -98,7 +98,7 @@ func TestInheritedPropsMarksOnlyTheKeysItInjected(t *testing.T) {
 	base := &stubNode{node: newNode(2, model.KindTimeseries, map[string]any{"unit": "V"})}
 	svc := inheritedChain(props, base)
 
-	n, err := svc.GetNode(context.Background(), 2, 7)
+	n, err := svc.GetNode(context.Background(), 2, anyAccess)
 	require.NoError(t, err)
 
 	md := mdOf(n)
@@ -114,7 +114,7 @@ func TestInheritedPropsNoMarkerWhenNothingInherited(t *testing.T) {
 	base := &stubNode{node: newNode(2, model.KindTimeseries, map[string]any{"lat": 1.0})}
 	svc := inheritedChain(props, base)
 
-	n, err := svc.GetNode(context.Background(), 2, 7)
+	n, err := svc.GetNode(context.Background(), 2, anyAccess)
 	require.NoError(t, err)
 
 	md := mdOf(n)
@@ -129,7 +129,7 @@ func TestInheritedPropsMarkerIsSorted(t *testing.T) {
 	props.inherited = map[string]any{"unit": "°C", "resolution": 60.0, "lat": 1.0}
 	svc := inheritedChain(props, &stubNode{node: newNode(2, model.KindTimeseries, nil)})
 
-	n, err := svc.GetNode(context.Background(), 2, 7)
+	n, err := svc.GetNode(context.Background(), 2, anyAccess)
 	require.NoError(t, err)
 
 	// Map iteration order is random, so a stable marker is what makes the
@@ -144,23 +144,23 @@ func TestInheritedPropsAppliesToEveryNodeReturningMethod(t *testing.T) {
 	// stopped being decorated cannot pass by way of some other method's result.
 	tests := map[string]func(service.NodeService) ([]model.Node, error){
 		"GetNodes": func(s service.NodeService) ([]model.Node, error) {
-			return s.GetNodes(context.Background(), []int32{2}, 7)
+			return s.GetNodes(context.Background(), []int32{2}, anyAccess)
 		},
 		"GetNode": func(s service.NodeService) ([]model.Node, error) {
-			n, err := s.GetNode(context.Background(), 2, 7)
+			n, err := s.GetNode(context.Background(), 2, anyAccess)
 			if err != nil {
 				return nil, err
 			}
 			return []model.Node{n}, nil
 		},
 		"GetNodeChildren": func(s service.NodeService) ([]model.Node, error) {
-			return s.GetNodeChildren(context.Background(), 1, 7)
+			return s.GetNodeChildren(context.Background(), 1, anyAccess)
 		},
 		"GetNodeParents": func(s service.NodeService) ([]model.Node, error) {
-			return s.GetNodeParents(context.Background(), 2, 7)
+			return s.GetNodeParents(context.Background(), 2, anyAccess)
 		},
 		"FindNodesByAntPath": func(s service.NodeService) ([]model.Node, error) {
-			_, nodes, err := s.FindNodesByAntPath(context.Background(), "^/a", "", 0, 10, 7)
+			_, nodes, err := s.FindNodesByAntPath(context.Background(), "^/a", "", 0, 10, anyAccess)
 			return nodes, err
 		},
 	}
@@ -206,7 +206,7 @@ func TestBothDecoratorsKeepTheirOwnMarker(t *testing.T) {
 		}),
 	)
 
-	n, err := svc.GetNode(context.Background(), 2, 7)
+	n, err := svc.GetNode(context.Background(), 2, anyAccess)
 	require.NoError(t, err)
 
 	md := mdOf(n)
@@ -228,7 +228,7 @@ func TestInheritedPropsFailOpenOnPanic(t *testing.T) {
 	})
 
 	// The node is still returned; decoration is additive.
-	n, err := svc.GetNode(context.Background(), 2, 7)
+	n, err := svc.GetNode(context.Background(), 2, anyAccess)
 	require.NoError(t, err)
 	assert.Equal(t, 1.0, mdOf(n)["lat"])
 }
@@ -400,7 +400,7 @@ func TestCreateNodeRegistersLocalMetadata(t *testing.T) {
 	svc := inheritedChain(props, base)
 
 	node := newNode(2, model.KindTimeseries, map[string]any{"unit": "V"})
-	require.NoError(t, svc.CreateNode(context.Background(), &node, 7))
+	require.NoError(t, svc.CreateNode(context.Background(), &node, anyAccess))
 
 	assert.Contains(t, base.calls, "CreateNode")
 }
@@ -437,7 +437,7 @@ func TestCreateNodeRejectsInheritedMarker(t *testing.T) {
 			svc := inheritedChain(props, base)
 
 			node := newNode(2, model.KindTimeseries, tc.md)
-			err := svc.CreateNode(context.Background(), &node, 7)
+			err := svc.CreateNode(context.Background(), &node, anyAccess)
 
 			require.ErrorIs(t, err, repository.ErrInheritedNotWritable)
 			assert.NotContains(t, base.calls, "CreateNode",
@@ -456,7 +456,7 @@ func TestCreateNodeByPathRejectsInheritedMarker(t *testing.T) {
 	node := newNode(2, model.KindFolder, map[string]any{
 		"unit": "V", model.InheritedKey: []any{"unit"},
 	})
-	err := svc.CreateNodeByPath(context.Background(), &node, 1, "a/b", 7)
+	err := svc.CreateNodeByPath(context.Background(), &node, 1, "a/b", anyAccess)
 
 	require.ErrorIs(t, err, repository.ErrInheritedNotWritable)
 	assert.NotContains(t, base.calls, "CreateNodeByPath")
@@ -470,7 +470,7 @@ func TestCreateNodeAcceptsPlainLocalMetadata(t *testing.T) {
 	svc := inheritedChain(props, base)
 
 	node := newNode(2, model.KindTimeseries, map[string]any{"unit": "V"})
-	require.NoError(t, svc.CreateNode(context.Background(), &node, 7))
+	require.NoError(t, svc.CreateNode(context.Background(), &node, anyAccess))
 
 	assert.Contains(t, base.calls, "CreateNode")
 }

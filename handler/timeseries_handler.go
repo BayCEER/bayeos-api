@@ -14,9 +14,9 @@ import (
 )
 
 func (h *Handler) CreateTimeseries(c *gin.Context) {
-	userID, ok := mw.AuthUserIDFromContext(c)
+	access, ok := mw.NodeAccessFromContext(c)
 	if !ok {
-		mw.AbortWithInternalError(c, "user id not found")
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
 	}
 	baseID, _ := mw.NodeIDFromContext(c)
@@ -25,7 +25,7 @@ func (h *Handler) CreateTimeseries(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid request body")
 		return
 	}
-	n, err := h.TimeseriesService.Create(c.Request.Context(), cre, baseID, userID)
+	n, err := h.TimeseriesService.Create(c.Request.Context(), cre, baseID, access)
 	if err != nil {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to create timeseries: %v", err))
 		return
@@ -39,12 +39,12 @@ func (h *Handler) GetTimeseries(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	userID, ok := mw.AuthUserIDFromContext(c)
+	access, ok := mw.NodeAccessFromContext(c)
 	if !ok {
-		mw.AbortWithInternalError(c, "user id not found")
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
 	}
-	n, err := h.TimeseriesService.Get(c.Request.Context(), id, userID)
+	n, err := h.TimeseriesService.Get(c.Request.Context(), id, access)
 	if err != nil {
 		if errors.Is(err, service.ErrNotTimeseries) {
 			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
@@ -62,9 +62,9 @@ func (h *Handler) UpdateTimeseries(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	userID, ok := mw.AuthUserIDFromContext(c)
+	access, ok := mw.NodeAccessFromContext(c)
 	if !ok {
-		mw.AbortWithInternalError(c, "user id not found")
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
 	}
 	var fields map[string]interface{}
@@ -72,7 +72,7 @@ func (h *Handler) UpdateTimeseries(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid request body")
 		return
 	}
-	if err := h.TimeseriesService.Update(c.Request.Context(), id, fields, userID); err != nil {
+	if err := h.TimeseriesService.Update(c.Request.Context(), id, fields, access); err != nil {
 		if errors.Is(err, service.ErrNotTimeseries) {
 			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
 			return
@@ -92,12 +92,12 @@ func (h *Handler) DeleteTimeseries(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	userID, ok := mw.AuthUserIDFromContext(c)
+	access, ok := mw.NodeAccessFromContext(c)
 	if !ok {
-		mw.AbortWithInternalError(c, "user id not found")
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
 	}
-	if err := h.TimeseriesService.Delete(c.Request.Context(), id, userID); err != nil {
+	if err := h.TimeseriesService.Delete(c.Request.Context(), id, access); err != nil {
 		if errors.Is(err, service.ErrNotTimeseries) {
 			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
 			return
@@ -114,9 +114,9 @@ func (h *Handler) AddTimeseriesData(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	userID, ok := mw.AuthUserIDFromContext(c)
+	access, ok := mw.NodeAccessFromContext(c)
 	if !ok {
-		mw.AbortWithInternalError(c, "user id not found")
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
 	}
 	var pts []model.DataPoint
@@ -125,7 +125,7 @@ func (h *Handler) AddTimeseriesData(c *gin.Context) {
 		return
 	}
 	ignoreInvalid := queryBoolDefault(c, "ignore_invalid_timestamps", false)
-	if err := h.TimeseriesService.AddData(c.Request.Context(), id, pts, userID, ignoreInvalid); err != nil {
+	if err := h.TimeseriesService.AddData(c.Request.Context(), id, pts, access, ignoreInvalid); err != nil {
 		if errors.Is(err, service.ErrNotTimeseries) {
 			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
 			return
@@ -137,9 +137,9 @@ func (h *Handler) AddTimeseriesData(c *gin.Context) {
 }
 
 func (h *Handler) AddTimeseriesDataBatch(c *gin.Context) {
-	userID, ok := mw.AuthUserIDFromContext(c)
+	access, ok := mw.NodeAccessFromContext(c)
 	if !ok {
-		mw.AbortWithInternalError(c, "user id not found")
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
 	}
 	var req model.SeriesDataBatch
@@ -152,7 +152,7 @@ func (h *Handler) AddTimeseriesDataBatch(c *gin.Context) {
 		return
 	}
 	ignoreInvalid := queryBoolDefault(c, "ignore_invalid_timestamps", false)
-	if err := h.TimeseriesService.AddDataBatch(c.Request.Context(), req.Series, userID, ignoreInvalid); err != nil {
+	if err := h.TimeseriesService.AddDataBatch(c.Request.Context(), req.Series, access, ignoreInvalid); err != nil {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to insert data: %v", err))
 		return
 	}
@@ -165,9 +165,9 @@ func (h *Handler) QueryTimeseriesData(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	userID, ok := mw.AuthUserIDFromContext(c)
+	access, ok := mw.NodeAccessFromContext(c)
 	if !ok {
-		mw.AbortWithInternalError(c, "user id not found")
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
 	}
 	var q model.TimeseriesQuery
@@ -181,7 +181,7 @@ func (h *Handler) QueryTimeseriesData(c *gin.Context) {
 		return
 	}
 	q.StatusFilter = statusFilter
-	data, err := h.TimeseriesService.QueryData(c.Request.Context(), id, q, userID)
+	data, err := h.TimeseriesService.QueryData(c.Request.Context(), id, q, access)
 	if err != nil {
 		if errors.Is(err, service.ErrNotTimeseries) {
 			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
@@ -194,9 +194,9 @@ func (h *Handler) QueryTimeseriesData(c *gin.Context) {
 }
 
 func (h *Handler) QueryTimeseriesDataBatch(c *gin.Context) {
-	userID, ok := mw.AuthUserIDFromContext(c)
+	access, ok := mw.NodeAccessFromContext(c)
 	if !ok {
-		mw.AbortWithInternalError(c, "user id not found")
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
 	}
 	var q model.TimeseriesDataQuery
@@ -220,7 +220,7 @@ func (h *Handler) QueryTimeseriesDataBatch(c *gin.Context) {
 		return
 	}
 	q.StatusFilter = statusFilter
-	data, err := h.TimeseriesService.QueryDataBatch(c.Request.Context(), q, userID)
+	data, err := h.TimeseriesService.QueryDataBatch(c.Request.Context(), q, access)
 	if err != nil {
 		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to query data: %v", err))
 		return
@@ -234,9 +234,9 @@ func (h *Handler) GetTimeseriesStats(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	userID, ok := mw.AuthUserIDFromContext(c)
+	access, ok := mw.NodeAccessFromContext(c)
 	if !ok {
-		mw.AbortWithInternalError(c, "user id not found")
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
 	}
 	var q model.TimeseriesStatsQuery
@@ -244,7 +244,7 @@ func (h *Handler) GetTimeseriesStats(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid query parameters")
 		return
 	}
-	stats, err := h.TimeseriesService.GetStats(c.Request.Context(), id, q, userID)
+	stats, err := h.TimeseriesService.GetStats(c.Request.Context(), id, q, access)
 	if err != nil {
 		if errors.Is(err, service.ErrNotTimeseries) {
 			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
@@ -262,9 +262,9 @@ func (h *Handler) GetTimeseriesGaps(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid id parameter")
 		return
 	}
-	userID, ok := mw.AuthUserIDFromContext(c)
+	access, ok := mw.NodeAccessFromContext(c)
 	if !ok {
-		mw.AbortWithInternalError(c, "user id not found")
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
 		return
 	}
 	var q model.TimeseriesGapsQuery
@@ -272,7 +272,7 @@ func (h *Handler) GetTimeseriesGaps(c *gin.Context) {
 		mw.AbortWithBadRequestError(c, "Invalid query parameters")
 		return
 	}
-	gaps, err := h.TimeseriesService.GetGaps(c.Request.Context(), id, q, userID)
+	gaps, err := h.TimeseriesService.GetGaps(c.Request.Context(), id, q, access)
 	if err != nil {
 		if errors.Is(err, service.ErrNotTimeseries) {
 			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
