@@ -1,9 +1,6 @@
 -- Node 
 create type node_path as (path text, ids int[]);
 
--- Required by the gin_trgm_ops index on node path below
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
 CREATE TABLE node (
     id serial primary key,
     display_name text not null,
