@@ -252,7 +252,7 @@ func main() {
 		propertyLoader(sqlRepo),
 	)
 
-	timeseriesService := service.NewTimeseriesService(nodeService, questRepo)
+	timeseriesService := service.NewTimeseriesService(nodeService, questRepo, nodeTimeSpanService)
 
 	// Adding routes
 	handler.NewMainHandler(&handler.Config{

@@ -288,6 +288,9 @@ func (s *syncSpan) set(impl service.NodeTimeSpanServiceInterface) {
 func (s *syncSpan) SetLocalMetrics(nodeID int32, first, last time.Time) {
 	s.current().SetLocalMetrics(nodeID, first, last)
 }
+func (s *syncSpan) SetLocalMetricsBulk(updates map[int32]model.NodeTimeSpan) {
+	s.current().SetLocalMetricsBulk(updates)
+}
 func (s *syncSpan) AddNode(nodeID int32, parentID int32) { s.current().AddNode(nodeID, parentID) }
 func (s *syncSpan) AddNodes(nodes []model.NodeTimeSpan)  { s.current().AddNodes(nodes) }
 func (s *syncSpan) MoveNode(nodeID int32, newParentID int32) {

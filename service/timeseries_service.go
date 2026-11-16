@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	log "github.com/BayCEER/bayeos/bayeos-api/logger"
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"github.com/BayCEER/bayeos/bayeos-api/repository"
 )
@@ -34,15 +35,20 @@ type TimeseriesService interface {
 	GetGaps(ctx context.Context, id int32, q model.TimeseriesGapsQuery, access model.NodeAccess) ([]model.GapInfo, error)
 }
 
+type TimeseriesSpanUpdater interface {
+	SetLocalMetricsBulk(updates map[int32]model.NodeTimeSpan)
+}
+
 type timeseriesService struct {
 	nodes   NodeService
 	queries repository.QuestRepo
+	span    TimeseriesSpanUpdater
 }
 
 // NewTimeseriesService returns a TimeseriesService backed by a NodeService and
 // a QuestRepo for data.
-func NewTimeseriesService(nodes NodeService, queries repository.QuestRepo) TimeseriesService {
-	return &timeseriesService{nodes: nodes, queries: queries}
+func NewTimeseriesService(nodes NodeService, queries repository.QuestRepo, span TimeseriesSpanUpdater) TimeseriesService {
+	return &timeseriesService{nodes: nodes, queries: queries, span: span}
 }
 
 func (s *timeseriesService) Create(ctx context.Context, cre model.TimeseriesCreate, baseNodeID int32, access model.NodeAccess) (node model.Node, err error) {
@@ -148,7 +154,13 @@ func (s *timeseriesService) AddData(ctx context.Context, id int32, pts []model.D
 	if ignoreInvalid {
 		pts = filterInvalidDataPoints(pts)
 	}
-	return s.queries.Insert(ctx, id, pts)
+	if err := s.queries.Insert(ctx, id, pts); err != nil {
+		return err
+	}
+	if len(pts) > 0 {
+		s.refreshNodeTimeSpans(ctx, []int32{id})
+	}
+	return nil
 }
 
 // AddDataBatch writes points for multiple series in a single batch. Every
@@ -168,7 +180,39 @@ func (s *timeseriesService) AddDataBatch(ctx context.Context, series []model.Ser
 	if ignoreInvalid {
 		series = filterInvalidSeries(series)
 	}
-	return s.queries.InsertBatch(ctx, series)
+	if err := s.queries.InsertBatch(ctx, series); err != nil {
+		return err
+	}
+	affected := make([]int32, 0, len(series))
+	for _, srs := range series {
+		if len(srs.Ts) > 0 {
+			affected = append(affected, srs.ID)
+		}
+	}
+	s.refreshNodeTimeSpans(ctx, affected)
+	return nil
+}
+
+func (s *timeseriesService) refreshNodeTimeSpans(ctx context.Context, ids []int32) {
+	if s.span == nil || len(ids) == 0 {
+		return
+	}
+	updates := make(map[int32]model.NodeTimeSpan, len(ids))
+	for _, id := range ids {
+		first, last, err := s.queries.QueryTimeRange(ctx, id)
+		if err != nil {
+			log.Errorf("timeseries: failed to query time range for node %d: %v", id, err)
+			continue
+		}
+		if first.IsZero() && last.IsZero() {
+			continue
+		}
+		updates[id] = model.NodeTimeSpan{ID: id, LocalFirst: first, LocalLast: last}
+	}
+	if len(updates) == 0 {
+		return
+	}
+	s.span.SetLocalMetricsBulk(updates)
 }
 
 // isInvalidTimestamp reports whether a timestamp lies outside the accepted

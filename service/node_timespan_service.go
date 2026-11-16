@@ -14,6 +14,7 @@ import (
 // was routinely forgotten.
 type NodeTimeSpanServiceInterface interface {
 	SetLocalMetrics(nodeID int32, first, last time.Time)
+	SetLocalMetricsBulk(updates map[int32]model.NodeTimeSpan)
 	AddNode(nodeID int32, parentID int32)
 	AddNodes(nodes []model.NodeTimeSpan)
 	MoveNode(nodeID int32, newParentID int32)
@@ -117,6 +118,28 @@ func (ts *NodeTimeSpanService) SetLocalMetrics(nodeID int32, first, last time.Ti
 	}
 	ts.nodes[idx].LocalFirst = first
 	ts.nodes[idx].LocalLast = last
+	ts.recomputeAggregationsLocked()
+}
+
+// SetLocalMetricsBulk records local bounds for multiple nodes and re-aggregates
+// once for the whole batch.
+func (ts *NodeTimeSpanService) SetLocalMetricsBulk(updates map[int32]model.NodeTimeSpan) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
+	changed := false
+	for id, span := range updates {
+		idx, exists := ts.indexMap[id]
+		if !exists {
+			continue
+		}
+		ts.nodes[idx].LocalFirst = span.LocalFirst
+		ts.nodes[idx].LocalLast = span.LocalLast
+		changed = true
+	}
+	if !changed {
+		return
+	}
 	ts.recomputeAggregationsLocked()
 }
 
