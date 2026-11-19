@@ -2,6 +2,7 @@ package decorator
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -29,8 +30,8 @@ type TimeSpanConfig struct {
 	// Span is the aggregated time span tree. Required.
 	Span service.NodeTimeSpanServiceInterface
 
-	// Loader rebuilds the tree from scratch. It is required when RefreshEvery
-	// is set, and is also the source used for the initial load.
+	// Loader rebuilds the tree from scratch. It is required for path-based
+	// writes when SyncWrites is set, and whenever RefreshEvery is set.
 	Loader func(ctx context.Context) ([]model.NodeTimeSpan, error)
 
 	// Kinds restricts the decorator to nodes of these kinds. An empty or nil
@@ -77,7 +78,7 @@ func TimeSpan(cfg TimeSpanConfig) Decorator {
 	}
 
 	// The refresher is installed before the enricher and wrapper are built, so
-	// both capture the swappable holder rather than the initial tree.
+	// they share the live tree with services that update its local bounds.
 	if cfg.RefreshEvery > 0 {
 		if cfg.Loader == nil {
 			panic("decorator: TimeSpan RefreshEvery requires a Loader")
@@ -169,16 +170,26 @@ func (s *timeSpanService) CreateNode(ctx context.Context, node *model.Node, acce
 	return nil
 }
 
-// CreateNodeByPath is not tracked incrementally: the intermediate folders
-// created along the path are not returned by the service, so their ids are
-// unknown. The next refresh picks them up.
+// CreateNodeByPath reloads the span tree after creation because the operation
+// may create intermediate folders whose ids are not returned by the service.
 func (s *timeSpanService) CreateNodeByPath(ctx context.Context, node *model.Node, baseNodeID int32, path string, access model.NodeAccess) error {
 	if node != nil {
 		if err := rejectComputedMetadata(node.Metadata.Map()); err != nil {
 			return err
 		}
 	}
-	return s.NodeService.CreateNodeByPath(ctx, node, baseNodeID, path, access)
+	if s.cfg.SyncWrites && s.cfg.Loader == nil {
+		return errors.New("decorator: CreateNodeByPath requires a Loader when SyncWrites is enabled")
+	}
+	if err := s.NodeService.CreateNodeByPath(ctx, node, baseNodeID, path, access); err != nil {
+		return err
+	}
+	if s.cfg.SyncWrites {
+		if err := refreshSpanTree(ctx, s.cfg.Span, s.cfg.Loader); err != nil {
+			log.Errorf("timespan decorator: path creation succeeded but span refresh failed: %v", err)
+		}
+	}
+	return nil
 }
 
 // UpdateNode treats a parent_id change as a move, which changes which ancestors
@@ -266,8 +277,8 @@ func toInt32(v any) (int32, bool) {
 	}
 }
 
-// syncSpan is a swappable holder around a span tree, so a periodic rebuild can
-// replace the tree without racing the in-flight requests that read it.
+// syncSpan delegates to a stable tree instance so periodic rebuilds remain
+// visible to every service that shares the underlying span service.
 type syncSpan struct {
 	mu   sync.RWMutex
 	impl service.NodeTimeSpanServiceInterface
@@ -282,7 +293,7 @@ func (s *syncSpan) current() service.NodeTimeSpanServiceInterface {
 func (s *syncSpan) set(impl service.NodeTimeSpanServiceInterface) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.impl = impl
+	s.impl.ReplaceNodes(impl.GetNodes())
 }
 
 func (s *syncSpan) SetLocalMetrics(nodeID int32, first, last time.Time) {
@@ -291,8 +302,9 @@ func (s *syncSpan) SetLocalMetrics(nodeID int32, first, last time.Time) {
 func (s *syncSpan) SetLocalMetricsBulk(updates map[int32]model.NodeTimeSpan) {
 	s.current().SetLocalMetricsBulk(updates)
 }
-func (s *syncSpan) AddNode(nodeID int32, parentID int32) { s.current().AddNode(nodeID, parentID) }
-func (s *syncSpan) AddNodes(nodes []model.NodeTimeSpan)  { s.current().AddNodes(nodes) }
+func (s *syncSpan) ReplaceNodes(nodes []model.NodeTimeSpan) { s.current().ReplaceNodes(nodes) }
+func (s *syncSpan) AddNode(nodeID int32, parentID int32)    { s.current().AddNode(nodeID, parentID) }
+func (s *syncSpan) AddNodes(nodes []model.NodeTimeSpan)     { s.current().AddNodes(nodes) }
 func (s *syncSpan) MoveNode(nodeID int32, newParentID int32) {
 	s.current().MoveNode(nodeID, newParentID)
 }
@@ -312,16 +324,24 @@ func startTimeSpanRefresher(holder *syncSpan, loader func(context.Context) ([]mo
 		defer ticker.Stop()
 		for range ticker.C {
 			ctx, cancel := context.WithTimeout(context.Background(), every)
-			rebuilt, err := buildSpanTree(ctx, loader)
+			err := refreshSpanTree(ctx, holder, loader)
 			cancel()
 			if err != nil {
 				log.Errorf("timespan decorator: refresh failed, keeping previous tree: %v", err)
 				continue
 			}
-			holder.set(rebuilt)
-			log.Debugf("timespan decorator: refreshed %d nodes", len(rebuilt.GetNodes()))
+			log.Debugf("timespan decorator: refreshed %d nodes", len(holder.GetNodes()))
 		}
 	}()
+}
+
+func refreshSpanTree(ctx context.Context, span service.NodeTimeSpanServiceInterface, loader func(context.Context) ([]model.NodeTimeSpan, error)) error {
+	rebuilt, err := buildSpanTree(ctx, loader)
+	if err != nil {
+		return err
+	}
+	span.ReplaceNodes(rebuilt.GetNodes())
+	return nil
 }
 
 // buildSpanTree loads the tree from cfg.Loader. InitializeTree returns an

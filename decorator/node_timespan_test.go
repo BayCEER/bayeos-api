@@ -221,6 +221,54 @@ func TestTimeSpanWrites(t *testing.T) {
 		assert.False(t, ok, "a node that was never persisted must not enter the tree")
 	})
 
+	t.Run("CreateNodeByPath reloads all path-created nodes and bounds", func(t *testing.T) {
+		span, err := service.InitializeTree([]model.NodeTimeSpan{{ID: 1}})
+		require.NoError(t, err)
+
+		loaderCalls := 0
+		loader := func(context.Context) ([]model.NodeTimeSpan, error) {
+			loaderCalls++
+			return []model.NodeTimeSpan{
+				{ID: 1},
+				{ID: 7, ParentID: 1},
+				{ID: 8, ParentID: 7},
+				{ID: 9, ParentID: 8, LocalFirst: base, LocalLast: base.Add(time.Hour)},
+			}, nil
+		}
+		base2 := &stubNode{}
+		svc := Chain(base2, TimeSpan(TimeSpanConfig{
+			Span:       span,
+			Loader:     loader,
+			SyncWrites: true,
+		}))
+
+		require.NoError(t, svc.CreateNodeByPath(ctx, nil, 1, "new-folder/series", anyAccess))
+		assert.Equal(t, []string{"CreateNodeByPath"}, base2.calls)
+		assert.Equal(t, 1, loaderCalls)
+
+		for _, id := range []int32{7, 8, 9} {
+			first, last, ok := span.GetTimeSpan(id)
+			require.True(t, ok, "path-created node %d should be registered", id)
+			assert.Equal(t, base, first.UTC())
+			assert.Equal(t, base.Add(time.Hour), last.UTC())
+		}
+
+		span.SetLocalMetrics(9, base.Add(2*time.Hour), base.Add(3*time.Hour))
+		first, last, _ := span.GetTimeSpan(7)
+		assert.Equal(t, base.Add(2*time.Hour), first.UTC())
+		assert.Equal(t, base.Add(3*time.Hour), last.UTC())
+	})
+
+	t.Run("CreateNodeByPath requires a loader when synchronizing writes", func(t *testing.T) {
+		span := newTestSpan(t)
+		base2 := &stubNode{}
+		svc := Chain(base2, TimeSpan(TimeSpanConfig{Span: span, SyncWrites: true}))
+
+		err := svc.CreateNodeByPath(ctx, nil, 1, "new-folder/series", anyAccess)
+		require.EqualError(t, err, "decorator: CreateNodeByPath requires a Loader when SyncWrites is enabled")
+		assert.Empty(t, base2.calls, "reject the unsupported configuration before persisting the path")
+	})
+
 	t.Run("UpdateNode with parent_id moves the node", func(t *testing.T) {
 		span := newTestSpan(t)
 		base2 := &stubNode{}

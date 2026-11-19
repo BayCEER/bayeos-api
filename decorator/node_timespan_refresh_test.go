@@ -24,8 +24,9 @@ func TestSyncSpan(t *testing.T) {
 		assert.Equal(t, base.Add(3*time.Hour), l.UTC())
 	})
 
-	t.Run("a swap is visible to subsequent reads", func(t *testing.T) {
-		holder := &syncSpan{impl: newTestSpan(t)}
+	t.Run("replacing the snapshot updates the shared tree instance", func(t *testing.T) {
+		span := newTestSpan(t)
+		holder := &syncSpan{impl: span}
 
 		replacement, err := service.InitializeTree([]model.NodeTimeSpan{
 			{ID: 42, ParentID: 0, LocalFirst: base, LocalLast: base.Add(time.Hour)},
@@ -38,6 +39,9 @@ func TestSyncSpan(t *testing.T) {
 		assert.False(t, ok, "the previous tree is gone")
 		f, _, ok := holder.GetTimeSpan(42)
 		require.True(t, ok)
+		assert.Equal(t, base, f.UTC())
+		f, _, ok = span.GetTimeSpan(42)
+		require.True(t, ok, "other services holding the tree must see the refreshed snapshot")
 		assert.Equal(t, base, f.UTC())
 	})
 
@@ -82,7 +86,7 @@ func TestBuildSpanTree(t *testing.T) {
 }
 
 func TestTimeSpanRefresh(t *testing.T) {
-	t.Run("the refresher replaces the tree and the enricher sees it", func(t *testing.T) {
+	t.Run("the refresher replaces the shared tree and the enricher sees it", func(t *testing.T) {
 		var calls atomic.Int32
 		loader := func(context.Context) ([]model.NodeTimeSpan, error) {
 			calls.Add(1)
@@ -93,10 +97,10 @@ func TestTimeSpanRefresh(t *testing.T) {
 		}
 
 		// The initial tree has node 1 rolling up to base+1h; the loader's tree
-		// has it at base. The switch between the two is what proves the swap
-		// reached the enricher.
+		// has it at base. The replacement proves the refresh reached the enricher.
+		span := newTestSpan(t)
 		d := TimeSpan(TimeSpanConfig{
-			Span:         newTestSpan(t),
+			Span:         span,
 			Loader:       loader,
 			RefreshEvery: 5 * time.Millisecond,
 		})
@@ -111,9 +115,12 @@ func TestTimeSpanRefresh(t *testing.T) {
 
 		require.Eventually(t, func() bool {
 			return first() == "2023-01-01T00:00:00Z"
-		}, 2*time.Second, 5*time.Millisecond, "the refresher should swap the tree")
+		}, 2*time.Second, 5*time.Millisecond, "the refresher should update the shared tree")
 
 		assert.Positive(t, calls.Load())
+		firstTime, _, ok := span.GetTimeSpan(1)
+		require.True(t, ok)
+		assert.Equal(t, base, firstTime.UTC(), "the original tree instance must be refreshed too")
 
 		// A node that only exists in the loaded tree is now decorated too,
 		// which is how a node created outside the decorated service becomes

@@ -15,6 +15,8 @@ import (
 type NodeTimeSpanServiceInterface interface {
 	SetLocalMetrics(nodeID int32, first, last time.Time)
 	SetLocalMetricsBulk(updates map[int32]model.NodeTimeSpan)
+	// ReplaceNodes atomically rebuilds the tree from a complete node snapshot.
+	ReplaceNodes(nodes []model.NodeTimeSpan)
 	AddNode(nodeID int32, parentID int32)
 	AddNodes(nodes []model.NodeTimeSpan)
 	MoveNode(nodeID int32, newParentID int32)
@@ -42,16 +44,27 @@ func NewNodeTimeSpanService() *NodeTimeSpanService {
 // aggregated before it is returned, so the result is ready to serve reads.
 func InitializeTree(nodes []model.NodeTimeSpan) (*NodeTimeSpanService, error) {
 	ts := &NodeTimeSpanService{
-		nodes:    append([]model.NodeTimeSpan(nil), nodes...),
 		indexMap: make(map[int32]int, len(nodes)),
 	}
 
+	ts.ReplaceNodes(nodes)
+	return ts, nil
+}
+
+// ReplaceNodes atomically rebuilds the tree from a complete node snapshot.
+// The service instance stays stable so other services holding it observe the
+// replacement as well.
+func (ts *NodeTimeSpanService) ReplaceNodes(nodes []model.NodeTimeSpan) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
+	ts.nodes = append([]model.NodeTimeSpan(nil), nodes...)
+	ts.indexMap = make(map[int32]int, len(nodes))
 	// Both the aggregation sweep and the delete cascade depend on every parent
 	// appearing before its children, so the ordering is established here rather
 	// than assumed of the caller's slice.
 	ts.rebuildFromInternalSlice()
 	ts.recomputeAggregationsLocked()
-	return ts, nil
 }
 
 // rebuildParentIndices converts int32 relationships into direct array indices
