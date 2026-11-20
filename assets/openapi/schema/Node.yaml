@@ -19,6 +19,13 @@ properties:
     maximum: 7
   node_path:
     type: string
+  node_path_ids:
+    readOnly: true
+    type: array
+    items:
+      type: integer
+      format: int32
+    description: IDs of all nodes on the path from the root down to and including this node
   metadata:
     type: object
     description: Optional arbitrary key/value metadata attached to the node
@@ -86,4 +93,5 @@ example:
   parent_id: 10
   permission: 5
   node_path: /Users/Bart Simpson
+  node_path_ids: [1, 10, 12]
   created_at: "2026-08-31T12:34:56.789Z"

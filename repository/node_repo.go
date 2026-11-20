@@ -11,7 +11,7 @@ import (
 
 func (r *SqlRepo) FindNodeByID(ctx context.Context, ID int32) (model.Node, error) {
 	var d model.Node
-	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id,  (path).path as node_path, created_at, coalesce(metadata, '{}') as metadata FROM node WHERE id=$1`
+	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id,  (path).path as node_path, coalesce((path).ids, '{}') as node_path_ids, created_at, coalesce(metadata, '{}') as metadata FROM node WHERE id=$1`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, &d, stmt, ID)
 	endQuerySpan(span, err)
@@ -20,7 +20,7 @@ func (r *SqlRepo) FindNodeByID(ctx context.Context, ID int32) (model.Node, error
 
 func (r *SqlRepo) FindNodesByIDs(ctx context.Context, ids []int32) ([]model.Node, error) {
 	n := []model.Node{}
-	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id,  (path).path as node_path, created_at, coalesce(metadata, '{}') as metadata FROM node WHERE id = ANY($1::int[])`
+	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id,  (path).path as node_path, coalesce((path).ids, '{}') as node_path_ids, created_at, coalesce(metadata, '{}') as metadata FROM node WHERE id = ANY($1::int[])`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.SelectContext(c, &n, stmt, ids)
 	endQuerySpan(span, err)
@@ -32,7 +32,7 @@ func (r *SqlRepo) FindNodesByIDs(ctx context.Context, ids []int32) ([]model.Node
 
 func (r *SqlRepo) FindNodeChildrenByID(ctx context.Context, ID int32) ([]model.Node, error) {
 	n := []model.Node{}
-	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id,  (path).path as node_path, created_at, coalesce(metadata, '{}') as metadata FROM node WHERE parent_id=$1`
+	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id,  (path).path as node_path, coalesce((path).ids, '{}') as node_path_ids, created_at, coalesce(metadata, '{}') as metadata FROM node WHERE parent_id=$1`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.SelectContext(c, &n, stmt, ID)
 	endQuerySpan(span, err)
@@ -77,10 +77,10 @@ func (r *SqlRepo) DeleteNodesByIDs(ctx context.Context, ids []int32) error {
 func (r *SqlRepo) FindNodeParentsByID(ctx context.Context, ID int32) ([]model.Node, error) {
 	n := []model.Node{}
 	stmt := `with recursive wf as (
-	SELECT id, display_name, kind, parent_id,  (path).path as node_path, created_at, coalesce(metadata, '{}') as metadata, 0 as level from node where id = $1
+	SELECT id, display_name, kind, parent_id,  (path).path as node_path, coalesce((path).ids, '{}') as node_path_ids, created_at, coalesce(metadata, '{}') as metadata, 0 as level from node where id = $1
     union all
-    select n.id, n.display_name, n.kind, n.parent_id, (n.path).path as node_path, n.created_at, coalesce(n.metadata, '{}') as metadata, wf.level + 1 as level FROM wf JOIN node n on n.id = wf.parent_id
-) 	SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, node_path, created_at, metadata from wf order by level desc `
+    select n.id, n.display_name, n.kind, n.parent_id, (n.path).path as node_path, (n.path).ids as node_path_ids, n.created_at, coalesce(n.metadata, '{}') as metadata, wf.level + 1 as level FROM wf JOIN node n on n.id = wf.parent_id
+) 	SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, node_path, node_path_ids, created_at, metadata from wf order by level desc `
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.SelectContext(c, &n, stmt, ID)
 	endQuerySpan(span, err)
@@ -92,7 +92,7 @@ func (r *SqlRepo) FindNodeParentsByID(ctx context.Context, ID int32) ([]model.No
 
 func (r *SqlRepo) FindNodeByIDAndKindAndName(ctx context.Context, ID int32, kind string, displayName string) (model.Node, error) {
 	n := model.Node{}
-	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, created_at, coalesce(metadata, '{}') as metadata 
+	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, coalesce((path).ids, '{}') as node_path_ids, created_at, coalesce(metadata, '{}') as metadata 
 	FROM node WHERE parent_id=$1 and kind=$2 and display_name=$3`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, &n, stmt, ID, kind, displayName)
@@ -104,7 +104,7 @@ func (r *SqlRepo) FindNodeByIDAndKindAndName(ctx context.Context, ID int32, kind
 }
 
 func (r *SqlRepo) CreateNode(ctx context.Context, n *model.Node) error {
-	stmt := `INSERT INTO node (display_name,kind,parent_id,metadata) VALUES ($1,$2,$3,coalesce($4::jsonb,'{}')) RETURNING id,display_name,kind,coalesce(parent_id,0) as parent_id, (path).path as node_path, created_at, coalesce(metadata, '{}') as metadata`
+	stmt := `INSERT INTO node (display_name,kind,parent_id,metadata) VALUES ($1,$2,$3,coalesce($4::jsonb,'{}')) RETURNING id,display_name,kind,coalesce(parent_id,0) as parent_id, (path).path as node_path, coalesce((path).ids, '{}') as node_path_ids, created_at, coalesce(metadata, '{}') as metadata`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, n, stmt,
 		n.DisplayName, n.Kind, n.ParentID, model.StripComputed(n.Metadata))
@@ -113,7 +113,7 @@ func (r *SqlRepo) CreateNode(ctx context.Context, n *model.Node) error {
 }
 
 func (r *SqlRepo) UpdateNode(ctx context.Context, n *model.Node) error {
-	stmt := `UPDATE node set display_name=$1,kind=$2, parent_id=$3, metadata=coalesce($4::jsonb,'{}') where id=$5 RETURNING id,display_name,kind,coalesce(parent_id,0) as parent_id, (path).path as node_path, coalesce(metadata, '{}') as metadata`
+	stmt := `UPDATE node set display_name=$1,kind=$2, parent_id=$3, metadata=coalesce($4::jsonb,'{}') where id=$5 RETURNING id,display_name,kind,coalesce(parent_id,0) as parent_id, (path).path as node_path, coalesce((path).ids, '{}') as node_path_ids, coalesce(metadata, '{}') as metadata`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, n, stmt,
 		n.DisplayName, n.Kind, n.ParentID, model.StripComputed(n.Metadata), n.ID)
@@ -135,10 +135,10 @@ func (r *SqlRepo) FindNodesByAntPath(ctx context.Context, regex string, kind str
 	var err error
 	c, span := withQuerySpan(ctx, "FindNodesByAntPath")
 	if kind == "" {
-		stmt = `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, created_at, coalesce(metadata, '{}') as metadata FROM node WHERE (path).path ~ $1 AND parent_id IS NOT NULL ORDER BY (path).path`
+		stmt = `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, coalesce((path).ids, '{}') as node_path_ids, created_at, coalesce(metadata, '{}') as metadata FROM node WHERE (path).path ~ $1 AND parent_id IS NOT NULL ORDER BY (path).path`
 		err = r.trans.SelectContext(c, &n, stmt, regex)
 	} else {
-		stmt = `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, created_at, coalesce(metadata, '{}') as metadata FROM node WHERE (path).path ~ $1 AND kind = $2 AND parent_id IS NOT NULL ORDER BY (path).path`
+		stmt = `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, coalesce((path).ids, '{}') as node_path_ids, created_at, coalesce(metadata, '{}') as metadata FROM node WHERE (path).path ~ $1 AND kind = $2 AND parent_id IS NOT NULL ORDER BY (path).path`
 		err = r.trans.SelectContext(c, &n, stmt, regex, kind)
 	}
 	endQuerySpan(span, err)
@@ -186,7 +186,7 @@ var ErrKindConflict = errors.New("node exists with a different kind")
 
 func (r *SqlRepo) FindNodeByParentAndName(ctx context.Context, parentID int32, name string) (model.Node, error) {
 	n := model.Node{}
-	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, created_at, coalesce(metadata, '{}') as metadata
+	stmt := `SELECT id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, coalesce((path).ids, '{}') as node_path_ids, created_at, coalesce(metadata, '{}') as metadata
 	FROM node WHERE parent_id=$1 AND display_name=$2`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, &n, stmt, parentID, name)
@@ -215,7 +215,7 @@ func (r *SqlRepo) FindOrCreateLeaf(ctx context.Context, parentID int32, name str
 
 func (r *SqlRepo) FindNodeByPath(ctx context.Context, path string) (model.Node, error) {
 	n := model.Node{}
-	stmt := `select id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, created_at, coalesce(metadata, '{}') as metadata from node where (path)."path" = $1`
+	stmt := `select id, display_name, kind, coalesce(parent_id,0) as parent_id, (path).path as node_path, coalesce((path).ids, '{}') as node_path_ids, created_at, coalesce(metadata, '{}') as metadata from node where (path)."path" = $1`
 	c, span := withQuerySpan(ctx, stmt)
 	err := r.trans.GetContext(c, &n, stmt, path)
 	endQuerySpan(span, err)

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gopkg.in/guregu/null.v4"
 )
 
@@ -13,15 +14,22 @@ const HOME_ID = 2
 const KindFolder = "Folder"
 const KindTimeseries = "Timeseries"
 
+type NodePathIDs []int32
+
+func (p *NodePathIDs) Scan(src any) error {
+	return pq.Array((*[]int32)(p)).Scan(src)
+}
+
 type Node struct {
-	ID          int32     `db:"id" json:"id"`
-	DisplayName string    `db:"display_name" json:"display_name"`
-	Kind        string    `db:"kind" json:"kind"`
-	ParentID    int32     `db:"parent_id" json:"parent_id"`
-	Permission  uint8     `db:"permission" json:"permission"`
-	NodePath    string    `db:"node_path" json:"node_path"`
-	CreatedAt   null.Time `db:"created_at" json:"created_at"`
-	Metadata    Metadata  `db:"metadata" json:"metadata"`
+	ID          int32       `db:"id" json:"id"`
+	DisplayName string      `db:"display_name" json:"display_name"`
+	Kind        string      `db:"kind" json:"kind"`
+	ParentID    int32       `db:"parent_id" json:"parent_id"`
+	Permission  uint8       `db:"permission" json:"permission"`
+	NodePath    string      `db:"node_path" json:"node_path"`
+	NodePathIDs NodePathIDs `db:"node_path_ids" json:"node_path_ids"`
+	CreatedAt   null.Time   `db:"created_at" json:"created_at"`
+	Metadata    Metadata    `db:"metadata" json:"metadata"`
 }
 
 type NodePrivilege struct {

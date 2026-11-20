@@ -73,6 +73,23 @@ func TestNodeCRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, forgedPath, node.NodePath)
 
+	// PATCH with read-only node_path_ids is rejected and leaves the path IDs unchanged
+	forgedPathIDs := node.NodePathIDs
+	req, err = NewJWTReaderRequest("PATCH", fmt.Sprintf("/bayeos-api/nodes/%d", newNode.ID), bytes.NewBuffer([]byte(`{"node_path_ids":[1]}`)), token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	req, err = NewJWTRequest("GET", fmt.Sprintf("/bayeos-api/nodes/%d", newNode.ID), nil, token)
+	require.NoError(t, err)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	err = json.Unmarshal(w.Body.Bytes(), &node)
+	require.NoError(t, err)
+	require.Equal(t, forgedPathIDs, node.NodePathIDs)
+
 	// CREATE node token
 	req, err = NewJWTRequest("POST", fmt.Sprintf("/bayeos-api/nodes/%d/tokens", newNode.ID), nil, token)
 	require.NoError(t, err)
@@ -377,6 +394,9 @@ func TestParentChildRelationship(t *testing.T) {
 	}
 	require.Contains(t, parentIDs, child.ID)
 	require.Contains(t, parentIDs, user.HomeNodeID)
+
+	// node_path_ids mirrors the full path from root to the node itself
+	require.Equal(t, parentIDs, []int32(child.NodePathIDs))
 
 	// User without permission cannot read children of foreign node
 	otherToken, err := SignUp("sideshowbob", "secretpassword")

@@ -114,7 +114,7 @@ var ErrAggregatedNotWritable = errors.New("aggregated properties are read-only")
 
 func (r *SqlRepo) CheckFieldName(i any, colname string) error {
 	col := strings.ToLower(colname)
-	if col == "id" || col == "created_at" || col == "node_path" {
+	if col == "id" || col == "created_at" || col == "node_path" || col == "node_path_ids" {
 		return fmt.Errorf("%w: %s", ErrReadOnlyField, colname)
 	}
 	rt := reflect.TypeOf(i)
