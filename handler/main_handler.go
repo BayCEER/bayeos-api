@@ -150,8 +150,7 @@ func NewMainHandler(c *Config) {
 	nodeSec.DELETE("/timeseries/:id", m.IdFromPath("id", "NodeID"), rwCheck, h.DeleteTimeseries)
 	nodeSec.POST("/timeseries/:id/data", m.IdFromPath("id", "NodeID"), rwCheck, h.AddTimeseriesData)
 	nodeSec.GET("/timeseries/:id/data", m.IdFromPath("id", "NodeID"), rwCheck, h.QueryTimeseriesData)
-	nodeSec.GET("/timeseries/:id/stats", m.IdFromPath("id", "NodeID"), rwCheck, h.GetTimeseriesStats)
-	nodeSec.GET("/timeseries/:id/gaps", m.IdFromPath("id", "NodeID"), rwCheck, h.GetTimeseriesGaps)
+	nodeSec.GET("/timeseries/:id/count", m.IdFromPath("id", "NodeID"), rwCheck, h.QueryTimeseriesCount)
 
 	// Chart
 	sec.GET("/charts", h.GetCharts)

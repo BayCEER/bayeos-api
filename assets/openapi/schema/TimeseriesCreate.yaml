@@ -2,7 +2,7 @@ type: object
 properties:
   display_name:
     type: string
-    pattern: '^\w+$'
+    description: Node path segment; must be non-blank and must not contain `/`, be `.` or be `..`
   parent_id:
     type: integer
     format: int32
@@ -32,7 +32,7 @@ properties:
         description: Longitude
       resolution:
         type: number
-        description: Sample interval in seconds; enables completeness statistics and gap detection
+        description: Sample interval in seconds
     additionalProperties: true
 example:
   display_name: Temperature (10m)

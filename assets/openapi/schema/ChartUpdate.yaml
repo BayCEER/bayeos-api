@@ -3,11 +3,14 @@ description: "Only the sent fields are changed; series, when present, replace th
 properties:
   display_name:
     type: string
+  description:
+    type: string
   series:
     type: array
     items:
       $ref: ./ChartSeries.yaml
 example:
   display_name: "Temperature 2027"
+  description: "Updated outdoor sensor"
   series:
     - node_id: 5

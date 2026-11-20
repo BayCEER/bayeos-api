@@ -15,7 +15,7 @@ properties:
     description: Timestamp encoding of the ts arrays; `iso` uses RFC3339 strings, `epoch` uses epoch microseconds
   series:
     type: array
-    description: One entry per requested timeseries (readable by the caller), in request order
+    description: One entry per requested timeseries readable by the caller; unreadable ids are omitted
     items:
       type: object
       properties:

@@ -10,3 +10,10 @@ properties:
     format: email
   super_user:
     type: boolean
+  memberids:
+    type: array
+    items:
+      type: integer
+      format: int32
+    description: >
+      Group ids to replace the user's group memberships; super user only.

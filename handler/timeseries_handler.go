@@ -193,6 +193,43 @@ func (h *Handler) QueryTimeseriesData(c *gin.Context) {
 	c.JSON(http.StatusOK, data)
 }
 
+func (h *Handler) QueryTimeseriesCount(c *gin.Context) {
+	id, err := strings.ParseStringToInt32(c.Param("id"))
+	if err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid id parameter")
+		return
+	}
+	access, ok := mw.NodeAccessFromContext(c)
+	if !ok {
+		mw.AbortWithUnauthorizedError(c, "unauthenticated")
+		return
+	}
+
+	var q model.TimeseriesCountQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		mw.AbortWithBadRequestError(c, "Invalid query parameters")
+		return
+	}
+
+	count, err := h.TimeseriesService.QueryCount(c.Request.Context(), id, q.From, q.To, q.Agg, access)
+
+	returnCount := struct {
+		Count int64 `json:"count"`
+	}{
+		Count: count,
+	}
+
+	if err != nil {
+		if errors.Is(err, service.ErrNotTimeseries) {
+			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
+			return
+		}
+		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to query count: %v", err))
+		return
+	}
+	c.JSON(http.StatusOK, returnCount)
+}
+
 func (h *Handler) QueryTimeseriesDataBatch(c *gin.Context) {
 	access, ok := mw.NodeAccessFromContext(c)
 	if !ok {
@@ -226,66 +263,6 @@ func (h *Handler) QueryTimeseriesDataBatch(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, data)
-}
-
-func (h *Handler) GetTimeseriesStats(c *gin.Context) {
-	id, err := strings.ParseStringToInt32(c.Param("id"))
-	if err != nil {
-		mw.AbortWithBadRequestError(c, "Invalid id parameter")
-		return
-	}
-	access, ok := mw.NodeAccessFromContext(c)
-	if !ok {
-		mw.AbortWithUnauthorizedError(c, "unauthenticated")
-		return
-	}
-	var q model.TimeseriesStatsQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		mw.AbortWithBadRequestError(c, "Invalid query parameters")
-		return
-	}
-	stats, err := h.TimeseriesService.GetStats(c.Request.Context(), id, q, access)
-	if err != nil {
-		if errors.Is(err, service.ErrNotTimeseries) {
-			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
-			return
-		}
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to compute stats: %v", err))
-		return
-	}
-	c.JSON(http.StatusOK, stats)
-}
-
-func (h *Handler) GetTimeseriesGaps(c *gin.Context) {
-	id, err := strings.ParseStringToInt32(c.Param("id"))
-	if err != nil {
-		mw.AbortWithBadRequestError(c, "Invalid id parameter")
-		return
-	}
-	access, ok := mw.NodeAccessFromContext(c)
-	if !ok {
-		mw.AbortWithUnauthorizedError(c, "unauthenticated")
-		return
-	}
-	var q model.TimeseriesGapsQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		mw.AbortWithBadRequestError(c, "Invalid query parameters")
-		return
-	}
-	gaps, err := h.TimeseriesService.GetGaps(c.Request.Context(), id, q, access)
-	if err != nil {
-		if errors.Is(err, service.ErrNotTimeseries) {
-			mw.AbortWithNotFoundError(c, "timeseries", "id", c.Param("id"))
-			return
-		}
-		if errors.Is(err, service.ErrNoResolution) {
-			mw.AbortWithBadRequestError(c, "node metadata requires a resolution value, or provide threshold_minutes")
-			return
-		}
-		mw.AbortWithInternalError(c, fmt.Sprintf("Failed to detect gaps: %v", err))
-		return
-	}
-	c.JSON(http.StatusOK, gaps)
 }
 
 // queryBoolDefault returns the boolean query parameter key, or def when the

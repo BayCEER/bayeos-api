@@ -132,23 +132,10 @@ type TimeseriesDataQuery struct {
 
 // TimeseriesStatsQuery are the query parameters of GET <context>/timeseries/{id}/stats.
 // The rollup granularity keeps the "agg" name for this endpoint.
-type TimeseriesStatsQuery struct {
+type TimeseriesCountQuery struct {
 	From *time.Time `form:"from"`
 	To   *time.Time `form:"to"`
 	Agg  string     `form:"agg"`
-}
-
-// TimeseriesGapsQuery are the query parameters of GET <context>/timeseries/{id}/gaps.
-type TimeseriesGapsQuery struct {
-	From *time.Time `form:"from"`
-	To   *time.Time `form:"to"`
-	// ThresholdMinutes overrides the gap threshold derived from the node's
-	// resolution metadata. When set, the node's resolution is not required.
-	// Optional.
-	ThresholdMinutes *int `form:"threshold_minutes" binding:"omitempty,gt=0"`
-	// Limit caps the number of gaps returned (longest first). Optional,
-	// defaults to 20.
-	Limit *int `form:"limit" binding:"omitempty,gt=0"`
 }
 
 // SeriesData holds the points of a single series within a batch response.

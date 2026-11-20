@@ -19,7 +19,7 @@ properties:
     format: date-time
   traceId:
     type: string
-    description: Unique identifier for error tracing
+    description: Unique identifier for error tracing; omitted when no valid trace context is available
 example:
   error: "InvalidRequest"
   message: "The request parameters are invalid."

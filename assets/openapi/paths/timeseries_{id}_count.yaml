@@ -1,0 +1,54 @@
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: integer
+      format: int32
+get:
+  tags:
+    - Timeseries
+  summary: Count data points in a timeseries
+  description: >
+    Counts data points for a single timeseries. Without `agg` the raw series is
+    counted; with `agg` the corresponding pre-aggregated view is counted.
+    `from` is inclusive and `to` is inclusive.
+  security:
+    - JWTAuth: []
+    - NodeTokenAuth: []
+  parameters:
+    - name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Inclusive lower time bound; omit to count all stored data points
+    - name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Inclusive upper time bound; omit to count all stored data points
+    - name: agg
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [1h, 1d, 1M, 1y]
+      description: >
+        Rollup granularity to count. Omit to count raw data points. Supported
+        views are hourly, daily, monthly and yearly.
+  responses:
+    "200":
+      description: ok
+      content:
+        application/json:
+          schema:
+            $ref: ../schema/TimeseriesCount.yaml
+    "404":
+      description: not found or not a timeseries
+      $ref: ../components/GenericError.yaml#/GenericError
+    default:
+      $ref: ../components/GenericError.yaml#/GenericError

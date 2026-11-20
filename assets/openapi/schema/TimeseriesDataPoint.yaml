@@ -11,7 +11,7 @@ properties:
         description: Epoch microseconds
   value:
     type: number
-    format: float
+    format: double
     description: Measurement value
   status:
     $ref: ./TimeseriesStatus.yaml

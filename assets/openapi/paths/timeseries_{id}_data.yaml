@@ -84,8 +84,9 @@ get:
       schema:
         type: integer
         format: int32
-        minimum: 1
-      description: Maximum number of data points to return; the most recent points are returned
+      description: >
+        Maximum number of data points to return; the most recent points are
+        returned. Omit or use a non-positive value to return all matching points.
     - name: ts_type
       in: query
       required: false

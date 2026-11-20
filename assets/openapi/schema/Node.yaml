@@ -6,7 +6,7 @@ properties:
     format: int32
   display_name:
     type: string
-    pattern: '^\w+$'
+    description: Node path segment; must be non-blank and must not contain `/`, be `.` or be `..`
   kind:
     type: string
   parent_id:
@@ -47,17 +47,17 @@ properties:
         description: Physical unit of the value, e.g. "°C", "%"
       resolution:
         type: number
-        description: Sample interval in seconds; enables completeness statistics and gap detection
+        description: Sample interval in seconds
       first:
         type: string
         format: date-time
         readOnly: true
-        description: First data point timestamp of the timeseries, rolled up from this node and its descendants by the API (ISO-8601 UTC, microsecond precision). Read-only; dropped from any write
+        description: First data point timestamp of the timeseries, rolled up from this node and its descendants by the API (ISO-8601 UTC, RFC3339 second precision; empty when unknown). Read-only; dropped from any write
       last:
         type: string
         format: date-time
         readOnly: true
-        description: Last data point timestamp of the timeseries, rolled up from this node and its descendants by the API (ISO-8601 UTC, microsecond precision). Read-only; dropped from any write
+        description: Last data point timestamp of the timeseries, rolled up from this node and its descendants by the API (ISO-8601 UTC, RFC3339 second precision; empty when unknown). Read-only; dropped from any write
       _inherited:
         type: array
         readOnly: true
@@ -67,7 +67,7 @@ properties:
           Names of the properties above that were copied in from an ancestor on
           this read. A property this node already defines is left out, because
           the value returned is the node's own. Computed on every read and never
-          stored, so a request that sends this key is rejected with 400. To
+          stored, so sending this key on update is rejected with 400. To
           override an inherited value locally, send the property without this
           key.
       _aggregated:
@@ -78,8 +78,8 @@ properties:
         description: >
           Names of the properties above that the API computed by rolling this
           node's own data together with that of its descendants, currently
-          first and last. Computed on every read and never stored, so a request
-          that sends this key is rejected with 400, and first and last are
+          first and last. Computed on every read and never stored, so sending
+          this key on update is rejected with 400, and first and last are
           dropped from any metadata write even when no marker names them.
     additionalProperties: true
   created_at:

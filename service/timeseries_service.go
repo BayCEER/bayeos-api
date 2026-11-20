@@ -14,10 +14,6 @@ import (
 // ErrNotTimeseries is returned when a node exists but is not a Timeseries.
 var ErrNotTimeseries = errors.New("node is not a timeseries")
 
-// ErrNoResolution is returned when gap detection requires a resolution value
-// that neither the node metadata nor an explicit threshold_minutes provides.
-var ErrNoResolution = errors.New("node metadata requires a resolution value, or provide threshold_minutes")
-
 // TimeseriesService exposes the plugin's operations on top of the shared node
 // tree and the QuestDB data repo.
 type TimeseriesService interface {
@@ -31,8 +27,8 @@ type TimeseriesService interface {
 
 	QueryData(ctx context.Context, id int32, q model.TimeseriesQuery, access model.NodeAccess) (*model.TimeseriesData, error)
 	QueryDataBatch(ctx context.Context, q model.TimeseriesDataQuery, access model.NodeAccess) (*model.TimeseriesBatchData, error)
-	GetStats(ctx context.Context, id int32, q model.TimeseriesStatsQuery, access model.NodeAccess) (*model.TimeseriesStats, error)
-	GetGaps(ctx context.Context, id int32, q model.TimeseriesGapsQuery, access model.NodeAccess) ([]model.GapInfo, error)
+
+	QueryCount(ctx context.Context, nodeID int32, from, to *time.Time, agg string, access model.NodeAccess) (int64, error)
 }
 
 type TimeseriesSpanUpdater interface {
@@ -43,6 +39,26 @@ type timeseriesService struct {
 	nodes   NodeService
 	queries repository.QuestRepo
 	span    TimeseriesSpanUpdater
+}
+
+func (s *timeseriesService) QueryCount(ctx context.Context, nodeID int32, from *time.Time, to *time.Time, agg string, access model.NodeAccess) (count int64, err error) {
+	ctx, span := withServiceSpan(ctx, "timeseries.query_count")
+	defer func() { endServiceSpan(span, err) }()
+	setAccess(span, access)
+	setNodeID(span, nodeID)
+	setTimeRange(span, from, to)
+	setAggregation(span, agg)
+
+	if _, err := s.Get(ctx, nodeID, access); err != nil {
+		return 0, err
+	}
+
+	count, err = s.queries.QueryCount(ctx, nodeID, from, to, agg)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query count: %w", err)
+	}
+	return count, nil
+
 }
 
 // NewTimeseriesService returns a TimeseriesService backed by a NodeService and
@@ -261,7 +277,7 @@ func filterInvalidSeries(series []model.SeriesData) []model.SeriesData {
 }
 
 func (s *timeseriesService) QueryData(ctx context.Context, id int32, q model.TimeseriesQuery, access model.NodeAccess) (data *model.TimeseriesData, err error) {
-	ctx, span := withServiceSpan(ctx, "timeseries.query")
+	ctx, span := withServiceSpan(ctx, "timeseries.query_data")
 	defer func() { endServiceSpan(span, err) }()
 	setNodeID(span, id)
 	setAccess(span, access)
@@ -404,82 +420,4 @@ func newTimeseriesData(interval, sampleFunc string, series []model.SeriesData, t
 		data.SampleFunc = sampleFunc
 	}
 	return data
-}
-
-func (s *timeseriesService) GetStats(ctx context.Context, id int32, q model.TimeseriesStatsQuery, access model.NodeAccess) (stats *model.TimeseriesStats, err error) {
-	ctx, span := withServiceSpan(ctx, "timeseries.get_stats")
-	defer func() { endServiceSpan(span, err) }()
-	setNodeID(span, id)
-	setAccess(span, access)
-
-	n, err := s.Get(ctx, id, access)
-	if err != nil {
-		return nil, err
-	}
-
-	stats, err = s.queries.ComputeStats(ctx, id, q.From, q.To, q.Agg)
-	if err != nil {
-		return nil, err
-	}
-	if stats.Count == 0 {
-		return stats, nil
-	}
-
-	if resolution, ok := n.Metadata.Map()["resolution"]; ok {
-		if resolutionSec, ok := resolution.(float64); ok && resolutionSec > 0 {
-			complete, err := s.queries.ComputeCompleteness(ctx, id, int(resolutionSec), q.From, q.To)
-			if err != nil {
-				return nil, err
-			}
-			stats.Completeness = complete
-		}
-	}
-
-	return stats, nil
-}
-
-// GetGaps returns the gaps of a timeseries detected on the raw series table.
-// The gap threshold defaults to twice the sampling period derived from the
-// node's resolution metadata and can be overridden with threshold_minutes.
-func (s *timeseriesService) GetGaps(ctx context.Context, id int32, q model.TimeseriesGapsQuery, access model.NodeAccess) (gaps []model.GapInfo, err error) {
-	ctx, span := withServiceSpan(ctx, "timeseries.get_gaps")
-	defer func() { endServiceSpan(span, err) }()
-	setNodeID(span, id)
-	setAccess(span, access)
-
-	n, err := s.Get(ctx, id, access)
-	if err != nil {
-		return nil, err
-	}
-
-	threshold, err := resolveGapThreshold(q.ThresholdMinutes, n.Metadata.Map())
-	if err != nil {
-		return nil, err
-	}
-
-	limit := 20
-	if q.Limit != nil {
-		limit = *q.Limit
-	}
-	return s.queries.DetectGaps(ctx, id, threshold, q.From, q.To, limit)
-}
-
-// resolveGapThreshold returns the gap detection threshold in minutes. An
-// explicit override wins; otherwise the value is derived from the node's
-// resolution metadata (twice the sampling period, at least 1 minute). When
-// neither is available ErrNoResolution is returned.
-func resolveGapThreshold(override *int, metadata map[string]any) (int, error) {
-	if override != nil && *override > 0 {
-		return *override, nil
-	}
-	if resolution, ok := metadata["resolution"]; ok {
-		if resolutionSec, ok := resolution.(float64); ok && resolutionSec > 0 {
-			threshold := int(resolutionSec / 60 * 2)
-			if threshold < 1 {
-				threshold = 1
-			}
-			return threshold, nil
-		}
-	}
-	return 0, ErrNoResolution
 }

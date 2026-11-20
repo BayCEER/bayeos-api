@@ -25,11 +25,8 @@ type QuestRepo interface {
 	UpsertStatusBatch(ctx context.Context, nodeID int32, pts []model.StatusPoint) error
 	Query(ctx context.Context, nodeID int32, from, to *time.Time, interval string, sampleFunc string, limit *int, statusFilter []model.Status) ([]model.DataPoint, error)
 	QueryBatch(ctx context.Context, ids []int32, from, to *time.Time, interval string, sampleFunc string, statusFilter []model.Status) ([]model.SeriesData, error)
-
-	ComputeStats(ctx context.Context, nodeID int32, from, to *time.Time, agg string) (*model.TimeseriesStats, error)
-	ComputeCompleteness(ctx context.Context, nodeID int32, resolutionSec int, from, to *time.Time) (*model.CompletenessStats, error)
-	DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time, limit int) ([]model.GapInfo, error)
 	QueryTimeRange(ctx context.Context, id int32) (time.Time, time.Time, error)
+	QueryCount(ctx context.Context, nodeID int32, from, to *time.Time, agg string) (int64, error)
 }
 
 // questRepo persists observations in the QuestDB series table. The series id is
@@ -330,8 +327,11 @@ func (r *questRepo) QueryBatch(ctx context.Context, ids []int32, from, to *time.
 	return series, nil
 }
 
-func (r *questRepo) ComputeStats(ctx context.Context, nodeID int32, from, to *time.Time, agg string) (*model.TimeseriesStats, error) {
-	ctx, span := r.span(ctx, "timeseries.compute_stats")
+func (r *questRepo) QueryCount(ctx context.Context, nodeID int32, from, to *time.Time, agg string) (int64, error) {
+
+	var count int64
+
+	ctx, span := r.span(ctx, "timeseries.query_counts")
 	defer span.End()
 
 	timeCol, table := "ts", rawTable
@@ -341,7 +341,7 @@ func (r *questRepo) ComputeStats(ctx context.Context, nodeID int32, from, to *ti
 	case "1h", "1d", "1M", "1y":
 		timeCol, table = "bucket_ts", "series_view_"+agg
 	default:
-		return nil, fmt.Errorf("unsupported aggregation %q", agg)
+		return 0, fmt.Errorf("unsupported aggregation %q", agg)
 	}
 
 	where := "WHERE id = $1"
@@ -355,121 +355,8 @@ func (r *questRepo) ComputeStats(ctx context.Context, nodeID int32, from, to *ti
 		where += fmt.Sprintf(" AND %s <= $%d", timeCol, len(args))
 	}
 
-	var count int64
 	err := r.conn.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s %s", table, where), args...).Scan(&count)
-	if err != nil {
-		return nil, err
-	}
-	if count == 0 {
-		return &model.TimeseriesStats{}, nil
-	}
-
-	query := fmt.Sprintf(`SELECT
-		count(*) AS count,
-		min(%[1]s) AS first_ts,
-		max(%[1]s) AS last_ts,
-		min(value) AS min_val,
-		max(value) AS max_val,
-		avg(value) AS mean,
-		stddev(value) AS stddev
-	FROM %[2]s %s`, timeCol, table, where)
-
-	var s model.TimeseriesStats
-	err = r.conn.QueryRow(ctx, query, args...).Scan(
-		&s.Count, &s.FirstTs, &s.LastTs,
-		&s.Min, &s.Max, &s.Mean, &s.Stddev,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &s, nil
-}
-
-func (r *questRepo) ComputeCompleteness(ctx context.Context, nodeID int32, resolutionSec int, from, to *time.Time) (*model.CompletenessStats, error) {
-	ctx, span := r.span(ctx, "timeseries.compute_completeness")
-	defer span.End()
-
-	args := []any{fmt.Sprintf("%d", nodeID), resolutionSec}
-	where := ""
-	if from != nil {
-		args = append(args, *from)
-		where += fmt.Sprintf(" AND ts >= $%d", len(args))
-	}
-	if to != nil {
-		args = append(args, *to)
-		where += fmt.Sprintf(" AND ts <= $%d", len(args))
-	}
-
-	query := `WITH range_bounds AS (
-		SELECT min(ts) AS start_ts, max(ts) AS end_ts, count(*) AS actual_count
-		FROM series WHERE id = $1` + where + `
-	)
-	SELECT
-		(end_ts - start_ts) / 1000000 / $2 + 1 AS expected_count,
-		actual_count,
-		(end_ts - start_ts) / 1000000 / $2 + 1 - actual_count AS missing_count,
-		round(actual_count * 100.0 / ((end_ts - start_ts) / 1000000 / $2 + 1), 2) AS completeness_pct
-	FROM range_bounds`
-
-	var c model.CompletenessStats
-	err := r.conn.QueryRow(ctx, query, args...).Scan(
-		&c.ExpectedCount, &c.ActualCount, &c.MissingCount, &c.CompletenessPct,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &c, nil
-}
-
-func (r *questRepo) DetectGaps(ctx context.Context, nodeID int32, thresholdMinutes int, from, to *time.Time, limit int) ([]model.GapInfo, error) {
-	ctx, span := r.span(ctx, "timeseries.detect_gaps")
-	defer span.End()
-
-	if limit < 1 {
-		limit = 20
-	}
-
-	args := []interface{}{fmt.Sprintf("%d", nodeID), thresholdMinutes}
-	where := ""
-	if from != nil {
-		args = append(args, *from)
-		where += fmt.Sprintf(" AND ts >= $%d", len(args))
-	}
-	if to != nil {
-		args = append(args, *to)
-		where += fmt.Sprintf(" AND ts <= $%d", len(args))
-	}
-
-	query := `WITH ordered AS (
-		SELECT ts, lag(ts) OVER (ORDER BY ts) AS prev_ts
-		FROM series WHERE id = $1` + where + `
-	)
-	SELECT prev_ts AS start, ts AS end_ts,
-		   (ts - prev_ts) / 1000000 / 60 AS duration_minutes
-	FROM ordered
-	WHERE prev_ts IS NOT NULL AND (ts - prev_ts) / 1000000 / 60 > $2
-	ORDER BY duration_minutes DESC
-	LIMIT ` + fmt.Sprintf("%d", limit)
-
-	rows, err := r.conn.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var gaps []model.GapInfo
-	for rows.Next() {
-		var g model.GapInfo
-		if err := rows.Scan(&g.Start, &g.End, &g.DurationMinutes); err != nil {
-			return nil, err
-		}
-		gaps = append(gaps, g)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return gaps, nil
+	return count, err
 }
 
 func (r *questRepo) QueryTimeRange(ctx context.Context, id int32) (time.Time, time.Time, error) {

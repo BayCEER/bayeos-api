@@ -2,7 +2,7 @@ get:
   summary: Get user groups
   tags:
     - "UserGroups"
-  description: "Get all user groups, optionally filtered by id. Super users only."
+  description: "Get user groups, optionally filtered by ids or display name pattern. Super users only."
   security:
     - JWTAuth: []
   parameters:
@@ -16,7 +16,29 @@ get:
         items:
           type: integer
           format: int32
-      description: Optional comma-separated list of group ids to filter by (e.g. `ids=1,2,3`)
+      description: >
+        Optional comma-separated list of group ids to filter by (e.g. `ids=1,2,3`).
+        When provided, `pattern`, `skip` and `limit` are ignored.
+    - name: pattern
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Optional display name pattern
+    - name: skip
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 0
+      description: Number of rows to skip
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 0
+      description: Maximum number of rows to return
 
   responses:
     "200":
@@ -24,9 +46,19 @@ get:
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: ../schema/UserGroup.yaml
+            type: object
+            required:
+              - total
+              - hits
+            properties:
+              total:
+                type: integer
+                format: int32
+                description: Total number of matching user groups
+              hits:
+                type: array
+                items:
+                  $ref: ../schema/UserGroup.yaml
     default:
       $ref: ../components/GenericError.yaml#/GenericError
 

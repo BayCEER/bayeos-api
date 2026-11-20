@@ -5,12 +5,15 @@ required:
 properties:
   display_name:
     type: string
+  description:
+    type: string
   series:
     type: array
     items:
       $ref: ./ChartSeries.yaml
 example:
   display_name: "Temperature 2026"
+  description: "Outdoor sensor"
   series:
     - node_id: 5
     - node_id: 9

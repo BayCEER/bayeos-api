@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/BayCEER/bayeos/bayeos-api/model"
 	"go.opentelemetry.io/otel"
@@ -49,4 +50,13 @@ func setAccess(span trace.Span, access model.NodeAccess) {
 		return
 	}
 	span.SetAttributes(attribute.Bool("bayeos.node_token", true))
+}
+
+func setTimeRange(span trace.Span, from *time.Time, to *time.Time) {
+	span.SetAttributes(attribute.String("bayeos.from", from.Format(time.RFC3339)))
+	span.SetAttributes(attribute.String("bayeos.to", to.Format(time.RFC3339)))
+}
+
+func setAggregation(span trace.Span, agg string) {
+	span.SetAttributes(attribute.String("bayeos.aggregation", agg))
 }

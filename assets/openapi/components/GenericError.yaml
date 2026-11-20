@@ -1,5 +1,5 @@
 GenericError:
-  description: Ein Systemfehler ist aufgetreten.
+  description: The request could not be completed.
   content:
     application/json:
       schema:

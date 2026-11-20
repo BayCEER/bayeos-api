@@ -99,9 +99,7 @@ paths:
     $ref: paths/timeseries_data.yaml
   /timeseries/{id}/data:
     $ref: paths/timeseries_{id}_data.yaml
-  /timeseries/{id}/stats:
-    $ref: paths/timeseries_{id}_stats.yaml
-  /timeseries/{id}/gaps:
-    $ref: paths/timeseries_{id}_gaps.yaml
+  /timeseries/{id}/count:
+    $ref: paths/timeseries_{id}_count.yaml
   /timeseries/{id}:
     $ref: paths/timeseries_{id}.yaml
